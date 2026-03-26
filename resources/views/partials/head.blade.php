@@ -1,5 +1,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="csrf-token" content="{{ csrf_token() }}" />
 
 <title>
     {{ filled($title ?? null) ? $title.' - '.config('app.name', 'Laravel') : config('app.name', 'Laravel') }}
@@ -14,3 +15,16 @@
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 @fluxAppearance
+
+<script>
+    window.iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        @if(config('services.turn.url'))
+        {
+            urls: '{{ config("services.turn.url") }}',
+            username: '{{ config("services.turn.username") }}',
+            credential: '{{ config("services.turn.credential") }}'
+        }
+        @endif
+    ];
+</script>
