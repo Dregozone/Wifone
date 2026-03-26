@@ -17,6 +17,10 @@
 @fluxAppearance
 
 <script>
+    window.authUserId = {{ auth()->id() ?? 'null' }};
+</script>
+
+<script>
     window.iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
         @if(config('services.turn.url'))

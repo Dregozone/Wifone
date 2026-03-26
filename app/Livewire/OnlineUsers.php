@@ -6,12 +6,19 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class OnlineUsers extends Component
 {
     /** @var array<int> */
     public array $onlineUserIds = [];
+
+    #[On('online-users-updated')]
+    public function updateOnlineUsers(array $ids): void
+    {
+        $this->onlineUserIds = $ids;
+    }
 
     /** @var Collection<int, User> */
     public Collection $users;
