@@ -90,6 +90,8 @@
 
         {{ $slot }}
 
+        @include('partials.call-ui')
+
         @fluxScripts
     </body>
 </html>
