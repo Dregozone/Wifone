@@ -45,22 +45,11 @@ A web-based, audio-only voice calling proof-of-concept built with Laravel, Rever
 
 ## Running the App
 
-You need three processes running simultaneously. Open three terminals:
-
-**1. Web server** (or use [Laravel Herd](https://herd.laravel.com/))
 ```bash
-php artisan serve
+composer run dev
 ```
 
-**2. Reverb WebSocket server**
-```bash
-php artisan reverb:start
-```
-
-**3. Queue worker** (for broadcasting)
-```bash
-php artisan queue:work
-```
+This starts the web server, Reverb WebSocket server, queue worker, and Vite dev server together. Alternatively, use [Laravel Herd](https://herd.laravel.com/) for the web server and run `composer run dev` for the remaining processes.
 
 ## How to Use
 
