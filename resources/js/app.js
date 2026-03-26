@@ -16,6 +16,9 @@ window.Echo = new Echo({
         headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
         },
+        params: {
+            user_id: window.authUserId,
+        },
     },
 });
 
