@@ -15,6 +15,9 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="phone" :href="route('calls.index')" :current="request()->routeIs('calls.index')" wire:navigate>
+                        {{ __('Call history') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 
@@ -90,7 +93,10 @@
 
         {{ $slot }}
 
-        @include('partials.call-ui')
+        {{-- Persisted so an in-progress call (and its <audio> element) survives wire:navigate page changes --}}
+        @persist('call-ui')
+            @include('partials.call-ui')
+        @endpersist
 
         @fluxScripts
     </body>

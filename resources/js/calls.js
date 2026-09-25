@@ -307,7 +307,14 @@ export function registerCallStores(Alpine, Echo, authUserId) {
             audio.srcObject = null;
         }
 
+        const hadCall = call.callId !== null;
+
         Object.assign(call, { state: IDLE, callId: null, peerId: null, peerName: '', startedAt: null });
+
+        if (hadCall) {
+            // Give the server a moment to record the final status, then refresh any open call log.
+            setTimeout(() => window.Livewire?.dispatch('call-finished'), 500);
+        }
     }
 
     // ── Echo subscriptions ───────────────────────────────────────────────────

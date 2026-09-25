@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\CallStatus;
 use Database\Factories\CallFactory;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,6 +40,31 @@ class Call extends Model
     public function receiver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'receiver_id');
+    }
+
+    /**
+     * Limit the query to calls the given user made or received.
+     *
+     * @param  Builder<Call>  $query
+     */
+    #[Scope]
+    protected function involving(Builder $query, User $user): void
+    {
+        $query->where(fn (Builder $query) => $query
+            ->where('caller_id', $user->id)
+            ->orWhere('receiver_id', $user->id));
+    }
+
+    /**
+     * Length of the connected part of the call, if it was answered and has ended.
+     */
+    public function durationInSeconds(): ?int
+    {
+        if (! $this->started_at || ! $this->ended_at) {
+            return null;
+        }
+
+        return (int) $this->started_at->diffInSeconds($this->ended_at);
     }
 
     /**

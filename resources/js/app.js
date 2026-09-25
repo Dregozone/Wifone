@@ -19,6 +19,12 @@ window.Echo = new Echo({
     },
 });
 
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((error) => console.warn('Service worker registration failed:', error));
+    });
+}
+
 // Alpine is started by Livewire on DOMContentLoaded, after this module has run.
 document.addEventListener('alpine:init', () => {
     if (window.authUserId) {

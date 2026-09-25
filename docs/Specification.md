@@ -1,168 +1,103 @@
-Web‑Based Voice Calling App – Proof of Concept
-Laravel + Reverb + WebRTC (Audio‑Only)
-Free Tools Only (except Flux Pro, already installed)
+# Wifone – Web-Based Voice Calling (Proof of Concept)
 
-1. Project Name
-"Wifone", a play on words with Wifi and Phone. This project is a WebRTC Voice Calling POC
+Laravel + Reverb + WebRTC (audio only). Free tools only, except Flux Pro (already installed).
 
-2. Goal
-Build a fully functional proof‑of‑concept web application that enables two authenticated users to make real‑time, audio‑only voice calls over Wi‑Fi using WebRTC.
-The backend must be Laravel, signalling must use Laravel Reverb, and all components must be free except Flux Pro (already installed).
-The system must be simple to set up, easy to deploy on Laravel Forge, and require minimal configuration.
+> Updated September 2026 to reflect the implemented design. The original specification had seven REST signalling endpoints and events. Those were replaced by whispers (see §3 and "Design decisions" below). `docs/Task1.md`–`Task10.md` record the original build plan and are kept for history only.
 
-3. Architecture Overview
-Frontend
-• 	Browser‑based WebRTC audio implementation (JavaScript)
-• 	UI elements:
-• 	User list with “Call” buttons
-• 	Incoming call modal
-• 	Accept / Reject buttons
-• 	Hang up button
-• 	Hidden audio element for remote audio playback
-Backend (Laravel)
-• 	Laravel 11+
-• 	Laravel Breeze for authentication (free)
-• 	Laravel Reverb for real‑time signalling (free)
-• 	REST endpoints for call actions
-• 	Private broadcast channels for user‑to‑user signalling
-• 	Optional call logs table
-Signalling Layer
-Handled entirely through Reverb:
-• 	CallInitiated
-• 	CallAccepted
-• 	CallRejected
-• 	CallEnded
-• 	WebRTCOffer
-• 	WebRTCAnswer
-• 	WebRTCIceCandidate
-TURN/STUN
-Use only free services:
-• 	STUN: stun.l.google.com:19302
-• 	TURN: free Xirsys tier or free self‑hosted Coturn
-(Agent may choose whichever is simplest to implement)
-Flux Pro is available but not required for this POC.
+## 1. Project name
 
-4. Functional Requirements
-Authentication
-• 	Use the already setup Laravel authentication, this is already installed and setup from the livewire skeleton.
-• 	Users must be logged in to access the call interface
-User Presence
-• 	Use Reverb presence channels to show which users are online
-Call Flow
-1. 	User A clicks “Call” on User B
-2. 	Backend broadcasts CallInitiated to User B
-3. 	User B sees an incoming call modal
-4. 	If accepted:
-• 	WebRTC offer/answer exchange begins
-• 	ICE candidates exchanged via Reverb
-• 	Audio stream established
-5. 	Either user may hang up
-6. 	CallEnded event is broadcast
-WebRTC Requirements
-• 	Audio only
-• 	Use getUserMedia({ audio: true })
-• 	Use RTCPeerConnection with STUN + TURN
-• 	Handle:
-• 	ontrack
-• 	onicecandidate
-• 	connectionstatechange
+"Wifone": a play on *Wi-Fi* and *phone*.
 
-5. Backend Implementation Details
-Install and Configure Reverb
-Agent must run: php artisan install:broadcasting
-php artisan reverb:install
-Environment Variables
+## 2. Goal
+
+A working proof-of-concept web app where two signed-in users can make real-time, audio-only voice calls in the browser using WebRTC. It must work across the internet (behind NAT) and be deployable on Laravel Forge. The backend is Laravel, real-time messaging uses Laravel Reverb, and everything is free except Flux Pro. The app is browser-only and installable as a PWA; there are no native apps and no calls to phone numbers.
+
+## 3. Architecture
+
+### Frontend
+- Livewire 4 + Flux UI pages. Call state lives in Alpine stores (`resources/js/calls.js`), and WebRTC is wrapped in `resources/js/webrtc.js`.
+- UI: user list with online status and Call buttons, incoming-call modal (Accept/Reject), calling/connecting/in-call bar with Cancel/Hang Up and a duration timer, notices (declined, missed, failed), and a hidden `<audio>` element for remote audio.
+- The call UI is `@persist`ed so a call survives `wire:navigate` page changes.
+- PWA: `public/manifest.json`, `public/sw.js` (offline page and asset caching; calls always need the network), and icons in `public/icons/`.
+
+### Backend
+- Authentication comes from the Livewire starter kit (Fortify).
+- `CallController` handles the call lifecycle only: `store`, `accept`, `reject` and `end`. `CallPolicy` authorizes each action.
+- `calls` table records every call, and the Call history page shows each user only their own calls.
+
+### Real-time channels (Reverb)
+| Channel | Type | Who may join | Used for |
+|---------|------|--------------|----------|
+| `online` | Presence | Any signed-in user | Online/offline badges |
+| `calls.{userId}` | Private | That user | Server events: `call.initiated`, `call.accepted`, `call.rejected`, `call.ended` |
+| `call.{callId}` | Private | The call's caller and receiver, while the call is ringing or active | Whispers: `offer`, `answer`, `ice` |
+
+### Call flow
+1. A clicks **Call**. A's browser asks for the microphone, sends `POST /calls` (status `ringing`), and subscribes to `call.{id}`. B receives `call.initiated` and sees the modal.
+2. B clicks **Accept**. B's browser asks for the microphone and sends `POST /calls/{id}/accept` (status `active`), so A receives `call.accepted`. B subscribes to `call.{id}`, creates the WebRTC offer, and whispers it.
+3. A answers via whisper. Both sides trickle ICE candidates via whisper, and early candidates are buffered until the remote description is set.
+4. When the peer connection reaches `connected`, both sides show "In call".
+5. Either side hangs up with `POST /calls/{id}/end` (status `completed`, or `missed` if still ringing), and the other side receives `call.ended`.
+6. Other endings:
+   - **Reject:** `rejected`.
+   - **No answer within 30 seconds:** the caller cancels, recorded as `missed`.
+   - **Busy callee:** the new call is rejected automatically.
+   - **The other user goes offline or closes the tab:** the call is ended.
+
+### STUN / TURN
+- STUN: `stun:stun.l.google.com:19302`.
+- TURN: optional, configured via `TURN_URL` (comma-separated), `TURN_USERNAME` and `TURN_CREDENTIAL`. Metered Open Relay is the recommended free provider. See `docs/Deployment.md`.
+
+## 4. Functional requirements
+- Only signed-in users can reach the call interface.
+- Online presence is shown via the Reverb presence channel.
+- A user can call an online user who isn't already in a call. The receiver can accept or reject.
+- Audio only (`getUserMedia({ audio: true })`), using `RTCPeerConnection` with STUN plus optional TURN. The app handles `ontrack`, `onicecandidate` and `connectionstatechange`.
+- Either user can hang up, and the caller can cancel while it's ringing.
+- Each user can see their own call history (contact, direction, status, time, duration) and call back. Calls between other users are never visible.
+- The app is installable as a PWA.
+- There's deliberately no mute button: users mute with their hardware, which avoids "am I muted?" confusion.
+
+## 5. Backend details
+
+### Environment
+```
 BROADCAST_CONNECTION=reverb
-REVERB_APP_ID=local
-REVERB_APP_KEY=local
-REVERB_APP_SECRET=local
-TURN_URL=turn:your-turn-url
-TURN_USERNAME=your-turn-username
-TURN_CREDENTIAL=your-turn-password
-Broadcast Channels
-Define in routes/channels.php:
-• 	Private channel: calls.{userId}
-• 	Authorize only if authenticated user ID matches the channel userId
-Events to Implement
-Each event must implement ShouldBroadcast and broadcast on calls.{toUserId}:
-• 	CallInitiated
-• 	CallAccepted
-• 	CallRejected
-• 	CallEnded
-• 	WebRTCOffer
-• 	WebRTCAnswer
-• 	WebRTCIceCandidate
-Controllers
-Create CallController with methods:
-• 	initiateCall
-• 	acceptCall
-• 	rejectCall
-• 	endCall
-• 	sendOffer
-• 	sendAnswer
-• 	sendCandidate
-Each method:
-• 	Validates input
-• 	Broadcasts the appropriate event
-• 	Returns JSON success
+REVERB_APP_ID / REVERB_APP_KEY / REVERB_APP_SECRET
+REVERB_HOST / REVERB_PORT / REVERB_SCHEME (+ VITE_ copies)
+TURN_URL / TURN_USERNAME / TURN_CREDENTIAL (optional)
+```
 
-6. Frontend Implementation Details
-JavaScript Modules
-Create a dedicated WebRTC module that handles:
-• 	Microphone access
-• 	RTCPeerConnection creation
-• 	Adding local audio track
-• 	Handling remote audio
-• 	Sending ICE candidates to backend
-• 	Receiving ICE candidates from Reverb
-• 	Creating and handling offers/answers
-Reverb Listeners
-Listen on: calls.{userId}
-Handle:
-• 	CallInitiated → show incoming call modal
-• 	CallAccepted → begin WebRTC negotiation
-• 	WebRTCOffer → set remote description and create answer
-• 	WebRTCAnswer → set remote description
-• 	WebRTCIceCandidate → add ICE candidate
-• 	CallEnded → close connection and reset UI
+### Routes (auth + verified)
+| Method | URI | Action | Who |
+|--------|-----|--------|-----|
+| GET | `/calls` | Call history (Livewire) | Any user; shows own calls only |
+| POST | `/calls` | Start a call (`receiver_id`) | Any user, not to themselves |
+| POST | `/calls/{call}/accept` | Accept | Receiver, while ringing |
+| POST | `/calls/{call}/reject` | Reject | Receiver, while ringing |
+| POST | `/calls/{call}/end` | Hang up / cancel (no-op if already ended) | Either participant |
 
-7. UI Requirements
-Main Page
-• 	List of online users
-• 	“Call” button next to each user
-Incoming Call Modal
-• 	Shows caller name
-• 	Accept / Reject buttons
-In‑Call UI
-• 	Hang up button
-• 	Hidden audio element for remote audio
+### Events
+`CallInitiated`, `CallAccepted`, `CallRejected` and `CallEnded` all implement `ShouldBroadcastNow`, so no queue worker is needed. Each is sent on the other participant's `calls.{userId}` channel.
 
-8. Database Schema (Optional)
-Table: calls
-Columns:
-• 	id
-• 	caller_id
-• 	receiver_id
-• 	started_at
-• 	ended_at
-• 	status (completed, rejected, missed)
+## 6. Database
 
-9. Deployment Requirements
-Laravel Forge
-• 	Deploy Laravel app normally
-• 	Enable Reverb in Forge UI
-• 	Add TURN credentials to .env
-• 	Ensure HTTPS (required for WebRTC)
-No paid services required.
-Flux Pro is available but not required for this POC.
+`calls`: `id`, `caller_id`, `receiver_id`, `started_at` (answered at), `ended_at`, `status` (`App\CallStatus`: `ringing`, `active`, `rejected`, `missed`, `completed`), and timestamps.
 
-10. Success Criteria
-A successful proof‑of‑concept must:
-• 	Allow two authenticated users to see each other online
-• 	Allow one user to call another
-• 	Show an incoming call modal
-• 	Establish a WebRTC audio connection
-• 	Allow both users to hear each other clearly
-• 	Allow either user to hang up
-• 	Work reliably behind NAT using free TURN
-• 	Use only free tools except Flux Pro (already installed)
+## 7. Deployment
+
+Laravel Forge with the Reverb toggle (`ws.` subdomain), HTTPS on both hostnames, TURN credentials in the environment, and `npm run build` on deploy. Step by step: `docs/Deployment.md`.
+
+## 8. Success criteria
+- Two signed-in users see each other online.
+- One can call the other; the other sees an incoming-call modal and can accept or reject.
+- A WebRTC audio connection is established and both users hear each other clearly.
+- Either user can hang up.
+- It works reliably behind NAT using free TURN.
+- Only free tools are used, apart from Flux Pro.
+
+## Design decisions (and why they changed from the original spec)
+- **Whispers instead of REST signalling:** the original POSTed every offer, answer and ICE candidate to Laravel, which re-broadcast it through a queued job. That needed a queue worker and added latency to dozens of messages per call. It also let anyone send connection data to anyone. Whispers go straight through Reverb, and only a live call's participants can join its channel.
+- **`ShouldBroadcastNow`:** lifecycle events are few and time-critical, and it removes the need to run a queue worker.
+- **The callee creates the offer:** the caller is already subscribed to the call channel while ringing, so the offer can't be sent before anyone is listening.
+- **HTTPS everywhere, including locally (Herd):** browsers block the microphone on insecure origins.

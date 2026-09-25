@@ -9,6 +9,10 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#16a34a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wifone">
 
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
@@ -20,9 +24,9 @@
     @php
         $iceServers = [['urls' => 'stun:stun.l.google.com:19302']];
 
-        if (config('services.turn.url')) {
+        if (config('services.turn.urls')) {
             $iceServers[] = [
-                'urls' => config('services.turn.url'),
+                'urls' => config('services.turn.urls'),
                 'username' => config('services.turn.username'),
                 'credential' => config('services.turn.credential'),
             ];

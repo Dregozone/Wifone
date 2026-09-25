@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#16a34a">
+    <title>Offline - Wifone</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+            font-family: system-ui, sans-serif; text-align: center;
+            background: #fafafa; color: #18181b;
+        }
+        @media (prefers-color-scheme: dark) { body { background: #18181b; color: #fafafa; } }
+        img { width: 72px; height: 72px; border-radius: 16px; }
+        button {
+            margin-top: 16px; padding: 10px 20px; border: 0; border-radius: 8px;
+            background: #16a34a; color: #fff; font: inherit; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <img src="/icons/icon-192.png" alt="">
+        <h1>You're offline</h1>
+        <p>Wifone needs an internet connection to make and receive calls.</p>
+        <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+</body>
+</html>

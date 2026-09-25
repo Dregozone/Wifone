@@ -1,3 +1,5 @@
+> **Historical:** this task describes the original build plan (March 2026). The signalling design has since changed: offer, answer and ICE now go over Echo whispers on a per-call channel, and the offer/answer/candidate endpoints and events were removed. See [Specification.md](Specification.md) for the current design and [Deployment.md](Deployment.md) for setup.
+
 # Task 3 – Broadcast Events
 
 ## Goal

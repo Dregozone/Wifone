@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\CallController;
+use App\Livewire\CallHistory;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::livewire('calls', CallHistory::class)->name('calls.index');
 
     Route::post('calls', [CallController::class, 'store'])->name('calls.store');
     Route::post('calls/{call}/accept', [CallController::class, 'accept'])->name('calls.accept');
