@@ -71,7 +71,7 @@ REVERB_APP_SECRET=...
 REVERB_HOST="your-site.on-forge.com"
 REVERB_PORT=443
 REVERB_SERVER_HOST=127.0.0.1
-REVERB_SERVER_PORT=8080
+REVERB_SERVER_PORT=6001
 REVERB_SCHEME=https
 
 VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
@@ -103,7 +103,7 @@ Forge's Reverb toggle needs a separate hostname, so set Reverb up by hand. There
 
 | Field | Value |
 |-------|-------|
-| Command | `php8.4 artisan reverb:start --host=127.0.0.1 --port=8080 --no-interaction` |
+| Command | `php8.4 artisan reverb:start --host=127.0.0.1 --port=6001 --no-interaction` |
 | Directory | `/home/forge/<your-site>.on-forge.com/current` with zero-downtime deployments, otherwise `/home/forge/<your-site>.on-forge.com` |
 | User | `forge` |
 | Processes | `1` |
@@ -124,13 +124,13 @@ Use the site's real folder name; the site's overview shows its path. Forge's Sup
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "Upgrade";
         proxy_read_timeout 120s;
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:6001;
     }
 ```
 
 `/app/...` carries browser WebSocket connections, and `/apps/...` is where Laravel publishes events to Reverb. Wifone has no routes of its own under those paths, so nothing clashes.
 
-Environment for this option: `REVERB_HOST` is the site's own hostname, `REVERB_PORT=443`, `REVERB_SCHEME=https`, and `REVERB_SERVER_HOST=127.0.0.1` / `REVERB_SERVER_PORT=8080` (see §2.2).
+Environment for this option: `REVERB_HOST` is the site's own hostname, `REVERB_PORT=443`, `REVERB_SCHEME=https`, and `REVERB_SERVER_HOST=127.0.0.1` / `REVERB_SERVER_PORT=6001` (see §2.2). Port 6001 is used rather than 8080 so it is unlikely to clash with other sites or tools on a shared server; any free port works as long as the command, the Nginx block and `REVERB_SERVER_PORT` all match.
 
 **Check:** after deploying, `https://<your-site>.on-forge.com/app/<REVERB_APP_KEY>` in a browser should return a short Reverb/Pusher message rather than a Laravel 404.
 
