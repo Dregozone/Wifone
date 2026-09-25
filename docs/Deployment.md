@@ -84,6 +84,8 @@ TURN_USERNAME=...
 TURN_CREDENTIAL=...
 ```
 
+> **`REVERB_APP_KEY` must be plain letters and numbers.** If Forge pre-fills it with a `base64:...` value, replace it. Reverb splits the channel signature on the first `:`, so a key containing a colon makes every private and presence channel fail. The socket still connects, but everyone shows as Offline and calls never ring. Copy the key from your local `.env`, or use any random 20-character lowercase string.
+
 > `VITE_*` values are compiled into the JavaScript at build time. Whenever you change any `REVERB_*` value, **redeploy** so `npm run build` runs again.
 
 ### 2.3 SSL
