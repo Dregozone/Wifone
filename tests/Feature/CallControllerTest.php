@@ -145,3 +145,55 @@ it('requires authentication for call endpoints', function (): void {
     $this->postJson(route('calls.reject', $call))->assertUnauthorized();
     $this->postJson(route('calls.end', $call))->assertUnauthorized();
 });
+
+it('lets a participant look up a call to resume it after a reload', function (): void {
+    $call = Call::factory()->active()->create();
+
+    $this->actingAs($call->receiver)
+        ->getJson(route('calls.show', $call))
+        ->assertOk()
+        ->assertJson([
+            'callId' => $call->id,
+            'status' => 'active',
+            'isCaller' => false,
+            'peerId' => $call->caller_id,
+            'peerName' => $call->caller->name,
+        ]);
+});
+
+it('does not let a stranger look up a call', function (): void {
+    $call = Call::factory()->active()->create();
+
+    $this->actingAs(User::factory()->create())
+        ->getJson(route('calls.show', $call))
+        ->assertForbidden();
+});
+
+it('records heartbeats for a live call', function (): void {
+    $call = Call::factory()->active()->create(['last_heartbeat_at' => now()->subMinute()]);
+
+    $this->freezeSecond();
+
+    $this->actingAs($call->caller)
+        ->postJson(route('calls.heartbeat', $call))
+        ->assertOk()
+        ->assertJson(['status' => 'active']);
+
+    expect($call->fresh()->last_heartbeat_at->equalTo(now()))->toBeTrue();
+});
+
+it('rejects heartbeats for a finished call or from a stranger', function (): void {
+    $finished = Call::factory()->completed()->create();
+    $live = Call::factory()->active()->create();
+
+    $this->actingAs($finished->caller)->postJson(route('calls.heartbeat', $finished))->assertForbidden();
+    $this->actingAs(User::factory()->create())->postJson(route('calls.heartbeat', $live))->assertForbidden();
+});
+
+it('stamps the first heartbeat when a call is accepted', function (): void {
+    $call = Call::factory()->create();
+
+    $this->actingAs($call->receiver)->postJson(route('calls.accept', $call))->assertOk();
+
+    expect($call->fresh()->last_heartbeat_at)->not->toBeNull();
+});

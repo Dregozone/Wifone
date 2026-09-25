@@ -11,7 +11,7 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Sent to the caller when the receiver answers.
+ * Sent to the caller, and to the receiver's other devices so they stop ringing, when the receiver answers.
  */
 class CallAccepted implements ShouldBroadcastNow
 {
@@ -28,6 +28,7 @@ class CallAccepted implements ShouldBroadcastNow
     {
         return [
             new PrivateChannel("calls.{$this->call->caller_id}"),
+            new PrivateChannel("calls.{$this->call->receiver_id}"),
         ];
     }
 

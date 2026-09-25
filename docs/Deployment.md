@@ -44,10 +44,10 @@ Open Relay gives 20 GB of relayed traffic free each month. An audio call uses ro
 ### 2.1 Server and site
 
 1. **Create a server** in Forge as an *App Server*. The smallest size is plenty for a prototype. Pick PHP 8.4 and a database (MySQL or Postgres, or keep SQLite if you prefer).
-2. **DNS:** point both of these at the server's IP with A records:
-   - `wifone.example.com` for the app
-   - `ws.wifone.example.com` for Reverb WebSockets
-3. **Create a site** for `wifone.example.com` and connect the GitHub repo `Dregozone/Wifone`, branch `main`.
+2. **Choose how Reverb is reached.** Browsers connect to Reverb over secure WebSockets (`wss://`) on port 443.
+   - **Option A – free `*.on-forge.com` domain (single hostname):** Reverb shares the site's hostname. Nginx forwards the `/app` and `/apps` paths to Reverb. No extra DNS is needed. Follow the **A** steps below.
+   - **Option B – your own domain:** add A records for `wifone.example.com` *and* `ws.wifone.example.com`, and use Forge's Reverb toggle. Follow the **B** steps below.
+3. **Create a site** for your hostname and connect the GitHub repo `Dregozone/Wifone`, branch `main`.
 4. Because Flux Pro is a private Composer package, add its credentials before the first deploy. On the server, run `composer config --global http-basic.composer.fluxui.dev <email> <license-key>`. Alternatively, add them to the site's Composer credentials in Forge if your Forge UI offers that.
 
 ### 2.2 Environment
@@ -67,8 +67,11 @@ BROADCAST_CONNECTION=reverb
 REVERB_APP_ID=...
 REVERB_APP_KEY=...
 REVERB_APP_SECRET=...
-REVERB_HOST="ws.wifone.example.com"
+# Option A (on-forge.com): the site's own hostname. Option B: "ws.wifone.example.com"
+REVERB_HOST="your-site.on-forge.com"
 REVERB_PORT=443
+REVERB_SERVER_HOST=127.0.0.1
+REVERB_SERVER_PORT=8080
 REVERB_SCHEME=https
 
 VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
@@ -85,9 +88,53 @@ TURN_CREDENTIAL=...
 
 ### 2.3 SSL
 
-In the site's **SSL** tab, request a Let's Encrypt certificate covering **both** `wifone.example.com` and `ws.wifone.example.com`. HTTPS is mandatory: browsers block the microphone on plain HTTP.
+HTTPS is mandatory, because browsers block the microphone on plain HTTP.
 
-### 2.4 Enable Reverb (this sets up the Reverb command for you)
+- **A (on-forge.com):** Forge's free domains come with HTTPS. If the site isn't on `https://` yet, request a certificate in the site's **SSL** tab.
+- **B (own domain):** in the **SSL** tab, request a Let's Encrypt certificate covering **both** `wifone.example.com` and `ws.wifone.example.com`.
+
+### 2.4 Run Reverb
+
+#### Option A – on-forge.com (single hostname): background process + Nginx paths
+
+Forge's Reverb toggle needs a separate hostname, so set Reverb up by hand. There are two parts.
+
+**1. Background process (the Reverb command).** In Forge open **Server → Background processes** (called *Daemons* in older Forge) and create a new process:
+
+| Field | Value |
+|-------|-------|
+| Command | `php8.4 artisan reverb:start --host=127.0.0.1 --port=8080 --no-interaction` |
+| Directory | `/home/forge/<your-site>.on-forge.com/current` with zero-downtime deployments, otherwise `/home/forge/<your-site>.on-forge.com` |
+| User | `forge` |
+| Processes | `1` |
+
+Use the site's real folder name; the site's overview shows its path. Forge's Supervisor keeps the command running and restarts it if it crashes. `php artisan reverb:restart` in the deploy script (§2.5) makes it pick up new code after each deploy.
+
+**2. Nginx: forward WebSocket paths to Reverb.** Open the site's **Nginx configuration** editor (site → *Nginx* / *Edit Nginx Configuration*). Inside the `server { ... }` block that has `listen 443`, paste this **above** the existing `location / {` block, then save:
+
+```nginx
+    # Laravel Reverb (WebSockets) on the same hostname
+    location ~ ^/apps?/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Scheme $scheme;
+        proxy_set_header SERVER_PORT $server_port;
+        proxy_set_header REMOTE_ADDR $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_read_timeout 120s;
+        proxy_pass http://127.0.0.1:8080;
+    }
+```
+
+`/app/...` carries browser WebSocket connections, and `/apps/...` is where Laravel publishes events to Reverb. Wifone has no routes of its own under those paths, so nothing clashes.
+
+Environment for this option: `REVERB_HOST` is the site's own hostname, `REVERB_PORT=443`, `REVERB_SCHEME=https`, and `REVERB_SERVER_HOST=127.0.0.1` / `REVERB_SERVER_PORT=8080` (see §2.2).
+
+**Check:** after deploying, `https://<your-site>.on-forge.com/app/<REVERB_APP_KEY>` in a browser should return a short Reverb/Pusher message rather than a Laravel 404.
+
+#### Option B – own domain: Forge's Reverb toggle
 
 1. Open the site's **Overview** tab and find the **Application** panel.
 2. Turn on the **Laravel Reverb** toggle and fill in:
@@ -99,16 +146,7 @@ In the site's **SSL** tab, request a Let's Encrypt certificate covering **both**
    - add an Nginx server block that proxies `wss://ws.wifone.example.com` (port 443) to that port, using the SSL certificate above;
    - append `php artisan reverb:restart` to the deploy script.
 
-**If you ever need to set the daemon up by hand** instead of using the toggle (e.g. the toggle is missing), add it under the server's **Background processes / Daemons**:
-
-| Field | Value |
-|-------|-------|
-| Command | `php8.4 artisan reverb:start --host=127.0.0.1 --port=8080 --no-interaction` |
-| Directory | `/home/forge/wifone.example.com/current` (zero-downtime deployments) or `/home/forge/wifone.example.com` |
-| User | `forge` |
-| Processes | `1` |
-
-With a hand-made daemon you'd also need your own Nginx proxy for the `ws.` hostname. That's why the toggle is the recommended route.
+If the toggle is missing, use Option A's background process and Nginx block instead. They work for a custom domain too.
 
 ### 2.5 Deploy script
 
@@ -134,7 +172,7 @@ $FORGE_PHP artisan reverb:restart
 
 If your site doesn't use zero-downtime deployments, drop the `$CREATE_RELEASE()`/`$ACTIVATE_RELEASE()` lines and `cd $FORGE_SITE_PATH` instead.
 
-**No queue worker or scheduler is required.** Call events broadcast immediately.
+**No queue worker is required**, because call events broadcast immediately. The **Laravel Scheduler** toggle is optional. With it on, calls abandoned by crashed browsers are tidied every minute. Without it, they are tidied whenever someone starts a call or opens their call history.
 
 ### 2.6 Smoke test
 
@@ -145,7 +183,7 @@ If your site doesn't use zero-downtime deployments, drop the `$CREATE_RELEASE()`
 5. On the phone, use *Add to Home Screen* (iOS Safari) or *Install app* (Android Chrome) to install the PWA.
 
 If the online badges never turn green, the WebSocket isn't connecting. Check in this order:
-- DNS for `ws.`;
-- that the certificate covers `ws.`;
+- Option A: the Nginx block (the `/app/<key>` check in §2.4) and that the background process is running;
+- Option B: DNS for `ws.` and that the certificate covers it;
 - that `VITE_REVERB_*` were set before the last build;
 - the Reverb daemon's logs in Forge.

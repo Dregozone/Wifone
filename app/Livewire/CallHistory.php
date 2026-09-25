@@ -26,6 +26,8 @@ class CallHistory extends Component
     #[Computed]
     public function calls(): LengthAwarePaginator
     {
+        Call::expireStale();
+
         return Call::query()
             ->involving(Auth::user())
             ->with(['caller:id,name', 'receiver:id,name'])

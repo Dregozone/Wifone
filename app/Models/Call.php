@@ -15,11 +15,22 @@ class Call extends Model
     /** @use HasFactory<CallFactory> */
     use HasFactory;
 
+    /**
+     * A ringing call nobody answered or cancelled within this many seconds is recorded as missed.
+     */
+    public const RING_EXPIRY_SECONDS = 45;
+
+    /**
+     * An active call with no heartbeat from either browser for this many seconds is recorded as completed.
+     */
+    public const HEARTBEAT_EXPIRY_SECONDS = 60;
+
     protected $fillable = [
         'caller_id',
         'receiver_id',
         'started_at',
         'ended_at',
+        'last_heartbeat_at',
         'status',
     ];
 
@@ -28,6 +39,7 @@ class Call extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'last_heartbeat_at' => 'datetime',
             'status' => CallStatus::class,
         ];
     }
@@ -53,6 +65,36 @@ class Call extends Model
         $query->where(fn (Builder $query) => $query
             ->where('caller_id', $user->id)
             ->orWhere('receiver_id', $user->id));
+    }
+
+    /**
+     * Close off calls whose browsers disappeared without hanging up (e.g. both crashed).
+     *
+     * Ringing calls past the ring window become missed; active calls without a recent
+     * heartbeat become completed, ending at their last sign of life.
+     *
+     * @return int The number of calls expired.
+     */
+    public static function expireStale(): int
+    {
+        $expiredRinging = static::query()
+            ->where('status', CallStatus::Ringing)
+            ->where('created_at', '<', now()->subSeconds(self::RING_EXPIRY_SECONDS))
+            ->update(['status' => CallStatus::Missed, 'ended_at' => now()]);
+
+        $staleActive = static::query()
+            ->where('status', CallStatus::Active)
+            ->whereRaw('coalesce(last_heartbeat_at, started_at, created_at) < ?', [now()->subSeconds(self::HEARTBEAT_EXPIRY_SECONDS)])
+            ->get();
+
+        foreach ($staleActive as $call) {
+            $call->update([
+                'status' => CallStatus::Completed,
+                'ended_at' => $call->last_heartbeat_at ?? $call->started_at ?? $call->created_at,
+            ]);
+        }
+
+        return $expiredRinging + $staleActive->count();
     }
 
     /**

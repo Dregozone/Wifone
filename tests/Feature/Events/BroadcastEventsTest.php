@@ -19,11 +19,14 @@ it('sends CallInitiated to the receiver with the caller details', function () {
         ]);
 });
 
-it('sends CallAccepted and CallRejected to the caller', function (string $eventClass, string $name) {
+it('sends CallAccepted and CallRejected to the caller and the receiver\'s other devices', function (string $eventClass, string $name) {
     $call = Call::factory()->create();
     $event = new $eventClass($call);
 
-    expect($event->broadcastOn()[0]->name)->toBe("private-calls.{$call->caller_id}")
+    expect(collect($event->broadcastOn())->pluck('name')->all())->toBe([
+        "private-calls.{$call->caller_id}",
+        "private-calls.{$call->receiver_id}",
+    ])
         ->and($event->broadcastAs())->toBe($name)
         ->and($event->broadcastWith())->toBe(['callId' => $call->id]);
 })->with([

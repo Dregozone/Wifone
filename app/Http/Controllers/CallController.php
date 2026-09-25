@@ -18,8 +18,45 @@ use Illuminate\Support\Facades\Gate;
  */
 class CallController extends Controller
 {
+    /**
+     * Current state of a call, used by a participant's tab to resume after a page reload.
+     */
+    public function show(Request $request, Call $call): JsonResponse
+    {
+        Gate::authorize('view', $call);
+
+        Call::expireStale();
+        $call->refresh()->load(['caller:id,name', 'receiver:id,name']);
+
+        $isCaller = $call->caller_id === $request->user()->id;
+        $peer = $isCaller ? $call->receiver : $call->caller;
+
+        return response()->json([
+            'callId' => $call->id,
+            'status' => $call->status->value,
+            'isCaller' => $isCaller,
+            'peerId' => $peer->id,
+            'peerName' => $peer->name,
+            'startedAt' => $call->started_at?->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Keep-alive from a browser that is in the call, so abandoned calls can be expired.
+     */
+    public function heartbeat(Call $call): JsonResponse
+    {
+        Gate::authorize('signal', $call);
+
+        $call->update(['last_heartbeat_at' => now()]);
+
+        return response()->json(['status' => $call->status->value]);
+    }
+
     public function store(Request $request): JsonResponse
     {
+        Call::expireStale();
+
         $validated = $request->validate([
             'receiver_id' => ['required', 'integer', 'exists:users,id', 'not_in:'.$request->user()->id],
         ]);
@@ -42,9 +79,11 @@ class CallController extends Controller
         $call->update([
             'status' => CallStatus::Active,
             'started_at' => now(),
+            'last_heartbeat_at' => now(),
         ]);
 
-        broadcast(new CallAccepted($call));
+        // toOthers(): the receiver's other devices also get this, so they stop ringing.
+        broadcast(new CallAccepted($call))->toOthers();
 
         return response()->json(['status' => 'ok']);
     }
@@ -58,7 +97,7 @@ class CallController extends Controller
             'ended_at' => now(),
         ]);
 
-        broadcast(new CallRejected($call));
+        broadcast(new CallRejected($call))->toOthers();
 
         return response()->json(['status' => 'ok']);
     }

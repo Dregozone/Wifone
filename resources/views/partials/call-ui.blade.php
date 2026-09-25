@@ -26,7 +26,7 @@
     {{-- In-Call Overlay: calling / connecting / connected --}}
     <div
         id="in-call-ui"
-        x-show="['outgoing', 'connecting', 'active'].includes($store.call.state)"
+        x-show="['outgoing', 'connecting', 'active', 'reconnecting'].includes($store.call.state)"
         x-cloak
         class="fixed bottom-6 left-1/2 z-40 w-[calc(100%-2rem)] max-w-md -translate-x-1/2"
     >
@@ -39,6 +39,7 @@
                 <flux:text>
                     <span x-show="$store.call.state === 'outgoing'">{{ __('Calling') }}</span>
                     <span x-show="$store.call.state === 'connecting'">{{ __('Connecting to') }}</span>
+                    <span x-show="$store.call.state === 'reconnecting'">{{ __('Reconnecting to') }}</span>
                     <span x-show="$store.call.state === 'active'">{{ __('In call with') }}</span>
                     <span id="in-call-with" class="font-semibold" x-text="$store.call.peerName"></span>
                 </flux:text>

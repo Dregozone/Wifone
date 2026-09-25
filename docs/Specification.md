@@ -42,7 +42,12 @@ A working proof-of-concept web app where two signed-in users can make real-time,
    - **Reject:** `rejected`.
    - **No answer within 30 seconds:** the caller cancels, recorded as `missed`.
    - **Busy callee:** the new call is rejected automatically.
-   - **The other user goes offline or closes the tab:** the call is ended.
+   - **The other user goes offline or closes the tab:** the call shows "Reconnecting" for up to 20 seconds, then ends if they don't come back.
+7. Resilience:
+   - **Page reload mid-call:** the tab remembers its call in `sessionStorage`, looks it up with `GET /calls/{id}`, rejoins `call.{id}` and whispers `rejoin`. The other side then sends a fresh offer.
+   - **Network failure after connecting:** the caller whispers `rejoin` to renegotiate, and both sides get a 20-second grace period.
+   - **Several devices signed in:** all of the receiver's devices ring. `call.accepted` and `call.rejected` also go to the receiver's other devices (`toOthers()`), so they stop ringing.
+   - **Abandoned calls:** browsers in a call send `POST /calls/{id}/heartbeat` every 20 seconds. `Call::expireStale()` marks ringing calls older than 45 seconds as missed, and active calls with no heartbeat for 60 seconds as completed. It runs on each new call and each history view, and every minute via the scheduler if that's enabled.
 
 ### STUN / TURN
 - STUN: `stun:stun.l.google.com:19302`.
@@ -73,6 +78,8 @@ TURN_URL / TURN_USERNAME / TURN_CREDENTIAL (optional)
 |--------|-----|--------|-----|
 | GET | `/calls` | Call history (Livewire) | Any user; shows own calls only |
 | POST | `/calls` | Start a call (`receiver_id`) | Any user, not to themselves |
+| GET | `/calls/{call}` | Call details for resuming after a reload | Either participant |
+| POST | `/calls/{call}/heartbeat` | Keep-alive while in a call | Either participant, while live |
 | POST | `/calls/{call}/accept` | Accept | Receiver, while ringing |
 | POST | `/calls/{call}/reject` | Reject | Receiver, while ringing |
 | POST | `/calls/{call}/end` | Hang up / cancel (no-op if already ended) | Either participant |
@@ -82,11 +89,11 @@ TURN_URL / TURN_USERNAME / TURN_CREDENTIAL (optional)
 
 ## 6. Database
 
-`calls`: `id`, `caller_id`, `receiver_id`, `started_at` (answered at), `ended_at`, `status` (`App\CallStatus`: `ringing`, `active`, `rejected`, `missed`, `completed`), and timestamps.
+`calls`: `id`, `caller_id`, `receiver_id`, `started_at` (answered at), `ended_at`, `last_heartbeat_at`, `status` (`App\CallStatus`: `ringing`, `active`, `rejected`, `missed`, `completed`), and timestamps.
 
 ## 7. Deployment
 
-Laravel Forge with the Reverb toggle (`ws.` subdomain), HTTPS on both hostnames, TURN credentials in the environment, and `npm run build` on deploy. Step by step: `docs/Deployment.md`.
+Laravel Forge. Reverb runs either via the Forge toggle on a `ws.` subdomain, or, on a free `*.on-forge.com` domain, as a background process with Nginx forwarding `/app` and `/apps` on the same hostname. It also needs HTTPS, TURN credentials in the environment, and `npm run build` on deploy. Step by step: `docs/Deployment.md`.
 
 ## 8. Success criteria
 - Two signed-in users see each other online.
