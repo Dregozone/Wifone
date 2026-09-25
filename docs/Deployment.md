@@ -132,7 +132,7 @@ Use the site's real folder name; the site's overview shows its path. Forge's Sup
 
 Environment for this option: `REVERB_HOST` is the site's own hostname, `REVERB_PORT=443`, `REVERB_SCHEME=https`, and `REVERB_SERVER_HOST=127.0.0.1` / `REVERB_SERVER_PORT=6001` (see §2.2). Port 6001 is used rather than 8080 so it is unlikely to clash with other sites or tools on a shared server; any free port works as long as the command, the Nginx block and `REVERB_SERVER_PORT` all match.
 
-**Check:** after deploying, `https://<your-site>.on-forge.com/app/<REVERB_APP_KEY>` in a browser should return a short Reverb/Pusher message rather than a Laravel 404.
+**Check:** after deploying, `https://<your-site>.on-forge.com/apps/1/channels` should return a short plain-text Reverb reply ("No matching application for ID [1].") rather than a styled Laravel 404 page. A plain browser visit to `/app/<key>` returning "Internal server error." is also Reverb (it expects a WebSocket there), so that is fine too.
 
 #### Option B – own domain: Forge's Reverb toggle
 
