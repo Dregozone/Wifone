@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\CallStatus;
 use Database\Factories\CallFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,7 @@ class Call extends Model
         return [
             'started_at' => 'datetime',
             'ended_at' => 'datetime',
+            'status' => CallStatus::class,
         ];
     }
 
@@ -36,5 +38,21 @@ class Call extends Model
     public function receiver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'receiver_id');
+    }
+
+    /**
+     * Whether the given user is the caller or the receiver of this call.
+     */
+    public function hasParticipant(User $user): bool
+    {
+        return in_array($user->id, [$this->caller_id, $this->receiver_id], true);
+    }
+
+    /**
+     * Get the ID of the participant on the other end of the call from the given user.
+     */
+    public function otherParticipantId(User $user): int
+    {
+        return $user->id === $this->caller_id ? $this->receiver_id : $this->caller_id;
     }
 }

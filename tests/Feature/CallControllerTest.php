@@ -1,12 +1,11 @@
 <?php
 
+use App\CallStatus;
 use App\Events\CallAccepted;
 use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
-use App\Events\WebRTCAnswer;
-use App\Events\WebRTCIceCandidate;
-use App\Events\WebRTCOffer;
+use App\Models\Call;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 
@@ -14,175 +13,135 @@ beforeEach(function (): void {
     Event::fake();
 });
 
-it('initiates a call and broadcasts CallInitiated', function (): void {
-    $sender = User::factory()->create();
+it('starts a ringing call and notifies the receiver', function (): void {
+    $caller = User::factory()->create();
     $receiver = User::factory()->create();
 
-    $this->actingAs($sender)
-        ->postJson(route('call.initiate'), ['to_user_id' => $receiver->id])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
+    $response = $this->actingAs($caller)
+        ->postJson(route('calls.store'), ['receiver_id' => $receiver->id])
+        ->assertCreated();
 
-    Event::assertDispatched(CallInitiated::class, function (CallInitiated $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
+    $call = Call::findOrFail($response->json('callId'));
+
+    expect($call->caller_id)->toBe($caller->id)
+        ->and($call->receiver_id)->toBe($receiver->id)
+        ->and($call->status)->toBe(CallStatus::Ringing);
+
+    Event::assertDispatched(CallInitiated::class, fn (CallInitiated $event): bool => $event->call->is($call));
 });
 
-it('accepts a call and broadcasts CallAccepted', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
+it('validates the receiver when starting a call', function (mixed $receiverId): void {
+    $caller = User::factory()->create();
 
-    $this->actingAs($sender)
-        ->postJson(route('call.accept'), ['to_user_id' => $receiver->id])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
+    $this->actingAs($caller)
+        ->postJson(route('calls.store'), ['receiver_id' => $receiverId === 'self' ? $caller->id : $receiverId])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('receiver_id');
 
-    Event::assertDispatched(CallAccepted::class, function (CallAccepted $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('rejects a call and broadcasts CallRejected', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route('call.reject'), ['to_user_id' => $receiver->id])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
-
-    Event::assertDispatched(CallRejected::class, function (CallRejected $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('ends a call and broadcasts CallEnded', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route('call.end'), ['to_user_id' => $receiver->id])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
-
-    Event::assertDispatched(CallEnded::class, function (CallEnded $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('sends an offer and broadcasts WebRTCOffer', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route('call.offer'), [
-            'to_user_id' => $receiver->id,
-            'offer' => ['type' => 'offer', 'sdp' => 'v=0'],
-        ])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
-
-    Event::assertDispatched(WebRTCOffer::class, function (WebRTCOffer $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('sends an answer and broadcasts WebRTCAnswer', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route('call.answer'), [
-            'to_user_id' => $receiver->id,
-            'answer' => ['type' => 'answer', 'sdp' => 'v=0'],
-        ])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
-
-    Event::assertDispatched(WebRTCAnswer::class, function (WebRTCAnswer $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('sends a candidate and broadcasts WebRTCIceCandidate', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route('call.candidate'), [
-            'to_user_id' => $receiver->id,
-            'candidate' => ['candidate' => 'candidate:0 1 UDP 2122252543'],
-        ])
-        ->assertSuccessful()
-        ->assertExactJson(['status' => 'ok']);
-
-    Event::assertDispatched(WebRTCIceCandidate::class, function (WebRTCIceCandidate $event) use ($sender, $receiver): bool {
-        return $event->toUserId === $receiver->id && $event->fromUserId === $sender->id;
-    });
-});
-
-it('returns 422 when to_user_id is missing', function (string $route): void {
-    $sender = User::factory()->create();
-
-    $this->actingAs($sender)
-        ->postJson(route($route), [])
-        ->assertUnprocessable();
+    Event::assertNotDispatched(CallInitiated::class);
 })->with([
-    'call.initiate',
-    'call.accept',
-    'call.reject',
-    'call.end',
+    'missing' => [null],
+    'unknown user' => [999999],
+    'yourself' => ['self'],
 ]);
 
-it('returns 422 when to_user_id does not exist', function (string $route): void {
-    $sender = User::factory()->create();
+it('lets the receiver accept a ringing call', function (): void {
+    $call = Call::factory()->create();
 
-    $this->actingAs($sender)
-        ->postJson(route($route), ['to_user_id' => 99999])
-        ->assertUnprocessable();
-})->with([
-    'call.initiate',
-    'call.accept',
-    'call.reject',
-    'call.end',
-]);
+    $this->actingAs($call->receiver)
+        ->postJson(route('calls.accept', $call))
+        ->assertOk();
 
-it('returns 422 when offer payload is missing', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
+    expect($call->fresh())
+        ->status->toBe(CallStatus::Active)
+        ->started_at->not->toBeNull();
 
-    $this->actingAs($sender)
-        ->postJson(route('call.offer'), ['to_user_id' => $receiver->id])
-        ->assertUnprocessable();
+    Event::assertDispatched(CallAccepted::class, fn (CallAccepted $event): bool => $event->call->is($call));
 });
 
-it('returns 422 when answer payload is missing', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
+it('lets the receiver reject a ringing call', function (): void {
+    $call = Call::factory()->create();
 
-    $this->actingAs($sender)
-        ->postJson(route('call.answer'), ['to_user_id' => $receiver->id])
-        ->assertUnprocessable();
+    $this->actingAs($call->receiver)
+        ->postJson(route('calls.reject', $call))
+        ->assertOk();
+
+    expect($call->fresh()->status)->toBe(CallStatus::Rejected);
+
+    Event::assertDispatched(CallRejected::class, fn (CallRejected $event): bool => $event->call->is($call));
 });
 
-it('returns 422 when candidate payload is missing', function (): void {
-    $sender = User::factory()->create();
-    $receiver = User::factory()->create();
+it('does not let the caller or a stranger accept or reject', function (string $routeName): void {
+    $call = Call::factory()->create();
 
-    $this->actingAs($sender)
-        ->postJson(route('call.candidate'), ['to_user_id' => $receiver->id])
-        ->assertUnprocessable();
+    $this->actingAs($call->caller)->postJson(route($routeName, $call))->assertForbidden();
+    $this->actingAs(User::factory()->create())->postJson(route($routeName, $call))->assertForbidden();
+
+    expect($call->fresh()->status)->toBe(CallStatus::Ringing);
+})->with(['calls.accept', 'calls.reject']);
+
+it('cannot accept a call that is no longer ringing', function (): void {
+    $call = Call::factory()->completed()->create();
+
+    $this->actingAs($call->receiver)
+        ->postJson(route('calls.accept', $call))
+        ->assertForbidden();
 });
 
-it('redirects unauthenticated requests', function (string $route): void {
-    $this->postJson(route($route), ['to_user_id' => 1])
-        ->assertUnauthorized();
-})->with([
-    'call.initiate',
-    'call.accept',
-    'call.reject',
-    'call.end',
-    'call.offer',
-    'call.answer',
-    'call.candidate',
-]);
+it('completes an active call and notifies the other participant', function (): void {
+    $call = Call::factory()->active()->create();
+
+    $this->actingAs($call->receiver)
+        ->postJson(route('calls.end', $call))
+        ->assertOk();
+
+    expect($call->fresh())
+        ->status->toBe(CallStatus::Completed)
+        ->ended_at->not->toBeNull();
+
+    Event::assertDispatched(CallEnded::class, fn (CallEnded $event): bool => $event->call->is($call)
+        && $event->recipientId === $call->caller_id);
+});
+
+it('marks a ringing call as missed when the caller cancels', function (): void {
+    $call = Call::factory()->create();
+
+    $this->actingAs($call->caller)
+        ->postJson(route('calls.end', $call))
+        ->assertOk();
+
+    expect($call->fresh()->status)->toBe(CallStatus::Missed);
+
+    Event::assertDispatched(CallEnded::class, fn (CallEnded $event): bool => $event->recipientId === $call->receiver_id);
+});
+
+it('treats ending an already finished call as a no-op', function (): void {
+    $call = Call::factory()->completed()->create();
+
+    $this->actingAs($call->caller)
+        ->postJson(route('calls.end', $call))
+        ->assertOk();
+
+    expect($call->fresh()->status)->toBe(CallStatus::Completed);
+
+    Event::assertNotDispatched(CallEnded::class);
+});
+
+it('does not let a stranger end a call', function (): void {
+    $call = Call::factory()->active()->create();
+
+    $this->actingAs(User::factory()->create())
+        ->postJson(route('calls.end', $call))
+        ->assertForbidden();
+
+    expect($call->fresh()->status)->toBe(CallStatus::Active);
+});
+
+it('requires authentication for call endpoints', function (): void {
+    $call = Call::factory()->create();
+
+    $this->postJson(route('calls.store'), ['receiver_id' => $call->receiver_id])->assertUnauthorized();
+    $this->postJson(route('calls.accept', $call))->assertUnauthorized();
+    $this->postJson(route('calls.reject', $call))->assertUnauthorized();
+    $this->postJson(route('calls.end', $call))->assertUnauthorized();
+});

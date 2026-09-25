@@ -2,20 +2,23 @@
 
 namespace App\Events;
 
+use App\Models\Call;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class CallRejected implements ShouldBroadcast
+/**
+ * Sent to the caller when the receiver declines (or is busy).
+ */
+class CallRejected implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(
-        public int $toUserId,
-        public int $fromUserId,
+        public Call $call,
     ) {}
 
     /**
@@ -24,12 +27,22 @@ class CallRejected implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("calls.{$this->toUserId}"),
+            new PrivateChannel("calls.{$this->call->caller_id}"),
         ];
     }
 
     public function broadcastAs(): string
     {
         return 'call.rejected';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'callId' => $this->call->id,
+        ];
     }
 }

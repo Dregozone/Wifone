@@ -8,23 +8,25 @@
 
         <flux:table.rows>
             @foreach ($users as $user)
-                <flux:table.row wire:key="{{ $user->id }}">
+                <flux:table.row wire:key="user-{{ $user->id }}" x-data="{ userId: {{ $user->id }}, userName: {{ Js::from($user->name) }} }">
                     <flux:table.cell>{{ $user->name }}</flux:table.cell>
 
                     <flux:table.cell>
-                        @if (in_array($user->id, $onlineUserIds))
+                        <span x-show="$store.presence.isOnline(userId)" x-cloak>
                             <flux:badge color="green" size="sm" icon="signal">{{ __('Online') }}</flux:badge>
-                        @else
+                        </span>
+                        <span x-show="! $store.presence.isOnline(userId)">
                             <flux:badge color="zinc" size="sm" icon="signal-slash">{{ __('Offline') }}</flux:badge>
-                        @endif
+                        </span>
                     </flux:table.cell>
 
                     <flux:table.cell>
                         <flux:button
                             size="sm"
                             variant="primary"
-                            :disabled="! in_array($user->id, $onlineUserIds)"
-                            onclick="initiateCall({{ $user->id }}, '{{ e($user->name) }}')"
+                            icon="phone"
+                            x-bind:disabled="! $store.presence.isOnline(userId) || $store.call.state !== 'idle'"
+                            x-on:click="$store.call.start(userId, userName)"
                         >
                             {{ __('Call') }}
                         </flux:button>

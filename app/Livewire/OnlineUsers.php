@@ -6,20 +6,14 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
-use Livewire\Attributes\On;
 use Livewire\Component;
 
+/**
+ * Lists the other users. Online status and call buttons are driven client-side
+ * by the Alpine `presence` and `call` stores (see resources/js/calls.js).
+ */
 class OnlineUsers extends Component
 {
-    /** @var array<int> */
-    public array $onlineUserIds = [];
-
-    #[On('online-users-updated')]
-    public function updateOnlineUsers(array $ids): void
-    {
-        $this->onlineUserIds = $ids;
-    }
-
     /** @var Collection<int, User> */
     public Collection $users;
 

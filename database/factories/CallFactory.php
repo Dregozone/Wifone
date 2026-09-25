@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\CallStatus;
 use App\Models\Call;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -21,9 +22,26 @@ class CallFactory extends Factory
         return [
             'caller_id' => User::factory(),
             'receiver_id' => User::factory(),
-            'started_at' => $this->faker->optional()->dateTimeBetween('-1 hour', 'now'),
-            'ended_at' => $this->faker->optional()->dateTimeBetween('-30 minutes', 'now'),
-            'status' => $this->faker->randomElement(['pending', 'completed', 'rejected', 'missed']),
+            'started_at' => null,
+            'ended_at' => null,
+            'status' => CallStatus::Ringing,
         ];
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => CallStatus::Active,
+            'started_at' => now(),
+        ]);
+    }
+
+    public function completed(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => CallStatus::Completed,
+            'started_at' => now()->subMinutes(5),
+            'ended_at' => now(),
+        ]);
     }
 }

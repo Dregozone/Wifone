@@ -5,23 +5,13 @@ use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
-// New test route
-Route::get('/test1', function () {
-    dd('test 1');
-})->name('test1');
-
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
-});
 
-Route::prefix('call')->middleware('auth')->group(function () {
-    Route::post('initiate', [CallController::class, 'initiateCall'])->name('call.initiate');
-    Route::post('accept', [CallController::class, 'acceptCall'])->name('call.accept');
-    Route::post('reject', [CallController::class, 'rejectCall'])->name('call.reject');
-    Route::post('end', [CallController::class, 'endCall'])->name('call.end');
-    Route::post('offer', [CallController::class, 'sendOffer'])->name('call.offer');
-    Route::post('answer', [CallController::class, 'sendAnswer'])->name('call.answer');
-    Route::post('candidate', [CallController::class, 'sendCandidate'])->name('call.candidate');
+    Route::post('calls', [CallController::class, 'store'])->name('calls.store');
+    Route::post('calls/{call}/accept', [CallController::class, 'accept'])->name('calls.accept');
+    Route::post('calls/{call}/reject', [CallController::class, 'reject'])->name('calls.reject');
+    Route::post('calls/{call}/end', [CallController::class, 'end'])->name('calls.end');
 });
 
 require __DIR__.'/settings.php';

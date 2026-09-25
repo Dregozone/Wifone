@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Call;
 use App\Models\User;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -9,6 +10,10 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 
 Broadcast::channel('calls.{userId}', function (User $user, int $userId) {
     return $user->id === $userId;
+});
+
+Broadcast::channel('call.{call}', function (User $user, Call $call) {
+    return $user->can('signal', $call);
 });
 
 Broadcast::channel('online', function (User $user) {

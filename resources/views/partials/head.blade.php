@@ -16,19 +16,21 @@
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 @fluxAppearance
 
-<script>
-    window.authUserId = {{ auth()->id() ?? 'null' }};
-</script>
+@auth
+    @php
+        $iceServers = [['urls' => 'stun:stun.l.google.com:19302']];
 
-<script>
-    window.iceServers = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        @if(config('services.turn.url'))
-        {
-            urls: '{{ config("services.turn.url") }}',
-            username: '{{ config("services.turn.username") }}',
-            credential: '{{ config("services.turn.credential") }}'
+        if (config('services.turn.url')) {
+            $iceServers[] = [
+                'urls' => config('services.turn.url'),
+                'username' => config('services.turn.username'),
+                'credential' => config('services.turn.credential'),
+            ];
         }
-        @endif
-    ];
-</script>
+    @endphp
+
+    <script>
+        window.authUserId = {{ auth()->id() }};
+        window.iceServers = @js($iceServers);
+    </script>
+@endauth

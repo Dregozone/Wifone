@@ -1,209 +1,99 @@
-let peerConnection = null;
-let localStream = null;
-let remoteStream = null;
-let remoteUserId = null;
-
 /**
- * Build a new RTCPeerConnection using the ICE servers injected by the Blade layout.
+ * Thin wrapper around a single audio-only RTCPeerConnection.
  *
- * @returns {RTCPeerConnection}
+ * Signalling is left to the caller: `onSignal(type, payload)` is invoked with
+ * 'offer' | 'answer' | 'ice' messages that must reach the remote peer, and the
+ * remote peer's messages are fed back in via handleOffer / handleAnswer / addIceCandidate.
  */
-function createPeerConnection() {
-    const iceServers = window.iceServers ?? [{ urls: 'stun:stun.l.google.com:19302' }];
+export class AudioPeer {
+    /**
+     * @param {object} options
+     * @param {MediaStream} options.localStream
+     * @param {RTCIceServer[]} options.iceServers
+     * @param {HTMLAudioElement|null} options.audioElement
+     * @param {(type: string, payload: object) => void} options.onSignal
+     * @param {(state: RTCPeerConnectionState) => void} options.onStateChange
+     */
+    constructor({ localStream, iceServers, audioElement, onSignal, onStateChange }) {
+        this.pendingCandidates = [];
+        this.onSignal = onSignal;
 
-    const pc = new RTCPeerConnection({ iceServers });
+        this.pc = new RTCPeerConnection({ iceServers });
 
-    pc.onicecandidate = ({ candidate }) => {
-        if (candidate && remoteUserId !== null) {
-            fetch('/call/candidate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-                },
-                body: JSON.stringify({
-                    to_user_id: remoteUserId,
-                    candidate: candidate.toJSON(),
-                }),
-            }).catch((err) => console.error('Failed to send ICE candidate:', err));
-        }
-    };
-
-    pc.ontrack = ({ streams }) => {
-        const [stream] = streams;
-        remoteStream = stream;
-
-        const audio = document.getElementById('remote-audio');
-        if (audio) {
-            audio.srcObject = stream;
-        }
-    };
-
-    pc.onconnectionstatechange = () => {
-        console.log('WebRTC connection state:', pc.connectionState);
-
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-            hangUp(remoteUserId);
-        }
-    };
-
-    return pc;
-}
-
-/**
- * Request microphone access, create an offer, and POST it to /call/offer.
- *
- * @param {number} toUserId
- */
-export async function startCall(toUserId) {
-    remoteUserId = toUserId;
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch (err) {
-        if (err.name === 'NotAllowedError') {
-            alert('Microphone access was denied. Please allow microphone access to make calls.');
-        } else {
-            console.error('getUserMedia error:', err);
-        }
-        return;
-    }
-
-    peerConnection = createPeerConnection();
-
-    for (const track of localStream.getTracks()) {
-        peerConnection.addTrack(track, localStream);
-    }
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    await fetch('/call/offer', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-        },
-        body: JSON.stringify({
-            to_user_id: toUserId,
-            offer: { type: offer.type, sdp: offer.sdp },
-        }),
-    });
-}
-
-/**
- * Set the remote SDP offer, create an answer, and POST it to /call/answer.
- *
- * @param {number} fromUserId
- * @param {{ type: string, sdp: string }} offer
- */
-export async function handleOffer(fromUserId, offer) {
-    remoteUserId = fromUserId;
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch (err) {
-        if (err.name === 'NotAllowedError') {
-            alert('Microphone access was denied. Please allow microphone access to answer calls.');
-        } else {
-            console.error('getUserMedia error:', err);
-        }
-        return;
-    }
-
-    peerConnection = createPeerConnection();
-
-    for (const track of localStream.getTracks()) {
-        peerConnection.addTrack(track, localStream);
-    }
-
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-
-    await fetch('/call/answer', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-        },
-        body: JSON.stringify({
-            to_user_id: fromUserId,
-            answer: { type: answer.type, sdp: answer.sdp },
-        }),
-    });
-}
-
-/**
- * Set the remote SDP answer received from the callee.
- *
- * @param {{ type: string, sdp: string }} answer
- */
-export async function handleAnswer(answer) {
-    if (!peerConnection) {
-        return;
-    }
-
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-}
-
-/**
- * Add a received ICE candidate to the peer connection.
- *
- * @param {RTCIceCandidateInit} candidate
- */
-export async function addIceCandidate(candidate) {
-    if (!peerConnection) {
-        return;
-    }
-
-    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-}
-
-/**
- * Close the peer connection, stop mic tracks, and POST to /call/end.
- *
- * @param {number|null} toUserId
- */
-export function hangUp(toUserId) {
-    if (localStream) {
         for (const track of localStream.getTracks()) {
-            track.stop();
+            this.pc.addTrack(track, localStream);
         }
-        localStream = null;
+
+        this.pc.onicecandidate = ({ candidate }) => {
+            if (candidate) {
+                this.onSignal('ice', candidate.toJSON());
+            }
+        };
+
+        this.pc.ontrack = ({ streams: [stream] }) => {
+            if (audioElement) {
+                audioElement.srcObject = stream;
+                audioElement.play().catch((error) => console.warn('Remote audio playback blocked:', error));
+            }
+        };
+
+        this.pc.onconnectionstatechange = () => onStateChange(this.pc.connectionState);
     }
 
-    if (peerConnection) {
-        peerConnection.onicecandidate = null;
-        peerConnection.ontrack = null;
-        peerConnection.onconnectionstatechange = null;
-        peerConnection.close();
-        peerConnection = null;
+    async createOffer() {
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        this.onSignal('offer', { type: offer.type, sdp: offer.sdp });
     }
 
-    remoteStream = null;
+    /**
+     * @param {RTCSessionDescriptionInit} offer
+     */
+    async handleOffer(offer) {
+        await this.pc.setRemoteDescription(offer);
+        await this.flushPendingCandidates();
 
-    const userId = toUserId ?? remoteUserId;
-    remoteUserId = null;
-
-    if (userId !== null) {
-        fetch('/call/end', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-            },
-            body: JSON.stringify({ to_user_id: userId }),
-        }).catch((err) => console.error('Failed to send hang-up:', err));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        this.onSignal('answer', { type: answer.type, sdp: answer.sdp });
     }
-}
 
-/**
- * Return the remote MediaStream (useful for debugging).
- *
- * @returns {MediaStream|null}
- */
-export function getRemoteStream() {
-    return remoteStream;
+    /**
+     * @param {RTCSessionDescriptionInit} answer
+     */
+    async handleAnswer(answer) {
+        await this.pc.setRemoteDescription(answer);
+        await this.flushPendingCandidates();
+    }
+
+    /**
+     * Candidates can arrive before the remote description is set; queue them until it is.
+     *
+     * @param {RTCIceCandidateInit} candidate
+     */
+    async addIceCandidate(candidate) {
+        if (!this.pc.remoteDescription) {
+            this.pendingCandidates.push(candidate);
+
+            return;
+        }
+
+        await this.pc.addIceCandidate(candidate);
+    }
+
+    async flushPendingCandidates() {
+        const candidates = this.pendingCandidates;
+        this.pendingCandidates = [];
+
+        for (const candidate of candidates) {
+            await this.pc.addIceCandidate(candidate);
+        }
+    }
+
+    close() {
+        this.pc.onicecandidate = null;
+        this.pc.ontrack = null;
+        this.pc.onconnectionstatechange = null;
+        this.pc.close();
+    }
 }

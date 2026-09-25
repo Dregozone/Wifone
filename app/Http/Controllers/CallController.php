@@ -2,154 +2,83 @@
 
 namespace App\Http\Controllers;
 
+use App\CallStatus;
 use App\Events\CallAccepted;
 use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
-use App\Events\WebRTCAnswer;
-use App\Events\WebRTCIceCandidate;
-use App\Events\WebRTCOffer;
 use App\Models\Call;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
+/**
+ * Call lifecycle only. The WebRTC offer/answer/ICE exchange happens
+ * browser-to-browser via Echo whispers on the private `call.{id}` channel.
+ */
 class CallController extends Controller
 {
-    public function initiateCall(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
+            'receiver_id' => ['required', 'integer', 'exists:users,id', 'not_in:'.$request->user()->id],
         ]);
 
-        $sender = $request->user();
-
-        Call::create([
-            'caller_id' => $sender->id,
-            'receiver_id' => $validated['to_user_id'],
-            'status' => 'pending',
+        $call = Call::create([
+            'caller_id' => $request->user()->id,
+            'receiver_id' => $validated['receiver_id'],
+            'status' => CallStatus::Ringing,
         ]);
 
-        broadcast(new CallInitiated(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-            fromUserName: $sender->name,
-        ));
+        broadcast(new CallInitiated($call));
+
+        return response()->json(['callId' => $call->id], 201);
+    }
+
+    public function accept(Call $call): JsonResponse
+    {
+        Gate::authorize('accept', $call);
+
+        $call->update([
+            'status' => CallStatus::Active,
+            'started_at' => now(),
+        ]);
+
+        broadcast(new CallAccepted($call));
 
         return response()->json(['status' => 'ok']);
     }
 
-    public function acceptCall(Request $request): JsonResponse
+    public function reject(Call $call): JsonResponse
     {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
+        Gate::authorize('reject', $call);
+
+        $call->update([
+            'status' => CallStatus::Rejected,
+            'ended_at' => now(),
         ]);
 
-        $sender = $request->user();
-
-        broadcast(new CallAccepted(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-        ));
+        broadcast(new CallRejected($call));
 
         return response()->json(['status' => 'ok']);
     }
 
-    public function rejectCall(Request $request): JsonResponse
+    /**
+     * Hang up an active call, or cancel one that is still ringing (recorded as missed).
+     * Ending an already-finished call is a no-op so both sides can safely hang up at once.
+     */
+    public function end(Request $request, Call $call): JsonResponse
     {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
-        ]);
+        Gate::authorize('end', $call);
 
-        $sender = $request->user();
+        if ($call->status->isLive()) {
+            $call->update([
+                'status' => $call->status === CallStatus::Active ? CallStatus::Completed : CallStatus::Missed,
+                'ended_at' => now(),
+            ]);
 
-        Call::where('caller_id', $validated['to_user_id'])
-            ->where('receiver_id', $sender->id)
-            ->where('status', 'pending')
-            ->update(['status' => 'rejected']);
-
-        broadcast(new CallRejected(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-        ));
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    public function endCall(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
-        ]);
-
-        $sender = $request->user();
-
-        Call::where(function ($query) use ($sender, $validated): void {
-            $query->where('caller_id', $sender->id)
-                ->where('receiver_id', $validated['to_user_id']);
-        })->orWhere(function ($query) use ($sender, $validated): void {
-            $query->where('caller_id', $validated['to_user_id'])
-                ->where('receiver_id', $sender->id);
-        })->whereIn('status', ['pending', 'active'])
-            ->update(['status' => 'completed', 'ended_at' => now()]);
-
-        broadcast(new CallEnded(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-        ));
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    public function sendOffer(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
-            'offer' => ['required', 'array'],
-        ]);
-
-        $sender = $request->user();
-
-        broadcast(new WebRTCOffer(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-            offer: (object) $validated['offer'],
-        ));
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    public function sendAnswer(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
-            'answer' => ['required', 'array'],
-        ]);
-
-        $sender = $request->user();
-
-        broadcast(new WebRTCAnswer(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-            answer: (object) $validated['answer'],
-        ));
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    public function sendCandidate(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'to_user_id' => ['required', 'integer', 'exists:users,id'],
-            'candidate' => ['required', 'array'],
-        ]);
-
-        $sender = $request->user();
-
-        broadcast(new WebRTCIceCandidate(
-            toUserId: $validated['to_user_id'],
-            fromUserId: $sender->id,
-            candidate: (object) $validated['candidate'],
-        ));
+            broadcast(new CallEnded($call, $call->otherParticipantId($request->user())));
+        }
 
         return response()->json(['status' => 'ok']);
     }
