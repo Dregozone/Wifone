@@ -15,7 +15,7 @@ use Livewire\WithPagination;
 /**
  * The signed-in user's own call log. Only calls they made or received are ever queried.
  */
-#[Title('Call history')]
+#[Title('Recents')]
 class CallHistory extends Component
 {
     use WithPagination;

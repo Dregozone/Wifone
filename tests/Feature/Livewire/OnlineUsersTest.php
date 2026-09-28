@@ -39,3 +39,20 @@ it('does not show the authenticated user in the list', function () {
         ->test(OnlineUsers::class)
         ->assertDontSee($auth->name);
 });
+
+it('shows an empty state when there is no one else to call', function () {
+    Livewire::actingAs(User::factory()->create())
+        ->test(OnlineUsers::class)
+        ->assertSee('No one else is here yet')
+        ->assertDontSeeHtml('placeholder="Search people"');
+});
+
+it('labels each call button with the contact name', function () {
+    $auth = User::factory()->create();
+    User::factory()->create(['name' => 'Priya Nair']);
+
+    Livewire::actingAs($auth)
+        ->test(OnlineUsers::class)
+        ->assertSeeHtml('placeholder="Search people"')
+        ->assertSeeHtml('aria-label="Call Priya Nair"');
+});

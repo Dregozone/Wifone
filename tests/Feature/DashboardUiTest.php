@@ -51,3 +51,17 @@ test('ice servers are stun only when turn is not configured', function () {
         ->assertOk()
         ->assertDontSee('turn:', false);
 });
+
+test('app layout uses wifone branding and navigation', function () {
+    $this->actingAs(User::factory()->create())
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee('Wifone')
+        ->assertDontSee('Laravel Starter Kit')
+        ->assertDontSee('livewire-starter-kit')
+        ->assertSee('aria-label="Main"', false)
+        ->assertSee(route('calls.index'), false)
+        ->assertSee(route('profile.edit'), false)
+        ->assertSee('aria-label="Dark mode"', false)
+        ->assertSee('<meta name="description"', false);
+});

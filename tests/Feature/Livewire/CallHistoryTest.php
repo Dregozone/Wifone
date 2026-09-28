@@ -64,3 +64,27 @@ it('labels an unanswered outgoing call as no answer and shows the duration of co
         ->assertSee('No answer')
         ->assertSee('2:05');
 });
+
+it('groups calls by day', function () {
+    $user = User::factory()->create();
+
+    Call::factory()->for($user, 'caller')->create(['created_at' => now()->subDays(5)]);
+    Call::factory()->for($user, 'caller')->create(['created_at' => now()->subDay()]);
+    Call::factory()->for($user, 'caller')->create(['created_at' => now()]);
+
+    Livewire::actingAs($user)
+        ->test(CallHistory::class)
+        ->assertSeeInOrder(['Today', 'Yesterday', now()->subDays(5)->translatedFormat('j F')]);
+});
+
+it('highlights calls the user missed', function () {
+    $user = User::factory()->create();
+    $caller = User::factory()->create(['name' => 'Missing Mo']);
+
+    Call::factory()->for($caller, 'caller')->for($user, 'receiver')->create(['status' => 'missed']);
+
+    Livewire::actingAs($user)
+        ->test(CallHistory::class)
+        ->assertSeeHtml('text-hangup')
+        ->assertSeeHtml('aria-label="Call Missing Mo back"');
+});
