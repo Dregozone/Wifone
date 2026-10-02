@@ -43,6 +43,16 @@ Key files: `app/Http/Controllers/CallController.php`, `app/Policies/CallPolicy.p
    Or run `composer run dev`, which starts both, plus a queue worker. Always browse via `https://wifone.test`. Don't use `php artisan serve`, because the session cookie is scoped to `wifone.test`.
 4. Register two users and sign in as each in separate browsers (or a normal window plus a private window), then call from the dashboard.
 
+## Embedding (the Life OS game)
+
+Wifone can run inside a frame on sites you allow, so calls reach you while you use them. Set
+`WIFONE_EMBED_ORIGINS` to their origins, separated by spaces (for the Life OS game:
+`"http://localhost:5173 http://localhost:4173 http://localhost:4174"`). Framed, Wifone keeps a
+session of its own in a partitioned cookie (`app/Http/Middleware/EmbeddedSession.php`), so you sign
+in once inside the game, and `resources/js/embedBridge.js` tells the site around it when a call
+comes in, connects or ends (and lets it answer, decline or hang up). Unset, nothing else may
+frame Wifone.
+
 ## Deployment
 
 See [docs/Deployment.md](docs/Deployment.md) for Laravel Forge and TURN setup.

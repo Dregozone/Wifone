@@ -1,6 +1,7 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { registerCallStores } from './calls.js';
+import { bridgeToEmbedder } from './embedBridge.js';
 
 window.Pusher = Pusher;
 
@@ -29,5 +30,6 @@ if ('serviceWorker' in navigator) {
 document.addEventListener('alpine:init', () => {
     if (window.authUserId) {
         registerCallStores(window.Alpine, window.Echo, window.authUserId);
+        bridgeToEmbedder(window.Alpine);
     }
 });
