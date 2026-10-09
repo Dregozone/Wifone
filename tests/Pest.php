@@ -1,6 +1,9 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Pest\Browser\Api\AwaitableWebpage;
+use Pest\Browser\Api\PendingAwaitablePage;
+use Pest\Browser\Api\Webpage;
 use Tests\TestCase;
 
 /*
@@ -16,7 +19,7 @@ use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    ->in('Feature');
+    ->in('Feature', 'Browser');
 
 /*
 |--------------------------------------------------------------------------
@@ -47,4 +50,19 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Audit a browser page with axe, at every impact level from critical to minor, once its
+ * entrance animations (the lists "rise" in) have finished, so text that is still fading
+ * in isn't reported as low contrast.
+ */
+function assertAccessibleOnceSettled(PendingAwaitablePage|AwaitableWebpage|Webpage $page): void
+{
+    $page->waitForEvent('networkidle');
+    $page->script('() => Promise.all(document.getAnimations()
+        .filter((animation) => animation.effect.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished))');
+
+    $page->assertNoAccessibilityIssues(level: 3);
 }
