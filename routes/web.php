@@ -10,7 +10,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
     Route::livewire('calls', CallHistory::class)->name('calls.index');
 
-    Route::post('calls', [CallController::class, 'store'])->name('calls.store');
+    Route::post('calls', [CallController::class, 'store'])->middleware('throttle:call-starts')->name('calls.store');
     Route::get('calls/{call}', [CallController::class, 'show'])->name('calls.show');
     Route::post('calls/{call}/heartbeat', [CallController::class, 'heartbeat'])->name('calls.heartbeat');
     Route::post('calls/{call}/accept', [CallController::class, 'accept'])->name('calls.accept');

@@ -87,14 +87,57 @@ class Call extends Model
             ->whereRaw('coalesce(last_heartbeat_at, started_at, created_at) < ?', [now()->subSeconds(self::HEARTBEAT_EXPIRY_SECONDS)])
             ->get();
 
-        foreach ($staleActive as $call) {
-            $call->update([
-                'status' => CallStatus::Completed,
-                'ended_at' => $call->last_heartbeat_at ?? $call->started_at ?? $call->created_at,
-            ]);
-        }
+        $expiredActive = $staleActive->filter(fn (Call $call): bool => $call->transitionFrom(CallStatus::Active, [
+            'status' => CallStatus::Completed,
+            'ended_at' => $call->last_heartbeat_at ?? $call->started_at ?? $call->created_at,
+        ]));
 
-        return $expiredRinging + $staleActive->count();
+        return $expiredRinging + $expiredActive->count();
+    }
+
+    /**
+     * Move the call on from the given status, but only if it still has that status in the database.
+     *
+     * Two requests can race for the same call (the receiver accepts as the caller cancels, two of the
+     * receiver's devices answer at once), and each one checked the status it loaded earlier. The
+     * conditional update lets exactly one of them win; the loser gets false and changes nothing.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function transitionFrom(CallStatus $from, array $attributes): bool
+    {
+        $changed = static::query()
+            ->whereKey($this->getKey())
+            ->where('status', $from)
+            ->update($attributes) === 1;
+
+        $this->refresh();
+
+        return $changed;
+    }
+
+    /**
+     * Cancel a ringing call (missed) or hang up an active one (completed).
+     *
+     * Ringing is tried first: if the receiver answers in between, the second step still ends the call.
+     *
+     * @return bool Whether this request ended the call, rather than finding it already over.
+     */
+    public function finish(): bool
+    {
+        return $this->transitionFrom(CallStatus::Ringing, ['status' => CallStatus::Missed, 'ended_at' => now()])
+            || $this->transitionFrom(CallStatus::Active, ['status' => CallStatus::Completed, 'ended_at' => now()]);
+    }
+
+    /**
+     * Whether the user is in a call that is ringing or connected.
+     */
+    public static function isUserBusy(User $user): bool
+    {
+        return static::query()
+            ->involving($user)
+            ->whereIn('status', [CallStatus::Ringing, CallStatus::Active])
+            ->exists();
     }
 
     /**
