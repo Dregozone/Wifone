@@ -71,7 +71,7 @@
                                         square
                                         class="rounded-full!"
                                         :aria-label="__('Call :name', ['name' => $user->name])"
-                                        x-bind:disabled="$store.call.state !== 'idle'"
+                                        x-bind:disabled="$store.call.state !== 'idle' || ! $store.presence.connected"
                                         x-on:click="$store.call.start(userId, userName)"
                                     />
                                 @endif
