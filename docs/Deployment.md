@@ -176,7 +176,21 @@ If your site doesn't use zero-downtime deployments, drop the `$CREATE_RELEASE()`
 
 **No queue worker is required**, because call events broadcast immediately. The **Laravel Scheduler** toggle is optional. With it on, calls abandoned by crashed browsers are tidied every minute. Without it, they are tidied whenever someone starts a call or opens their call history.
 
-### 2.6 Smoke test
+### 2.6 Cache build assets (optional, faster repeat visits)
+
+Files under `/build/` have a content hash in their name, so a browser can keep them for a year: a new deploy produces new names. In the same Nginx `server { ... }` block as §2.4, add:
+
+```nginx
+    location /build/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+```
+
+Lighthouse flags these files as having no cache lifetime without it.
+
+### 2.7 Smoke test
 
 1. Deploy, then open `https://wifone.example.com` and register two users.
 2. Sign in on a laptop, and on a phone using **mobile data** (not your Wi-Fi) so the call has to cross the internet.

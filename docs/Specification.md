@@ -17,6 +17,7 @@ A working proof-of-concept web app where two signed-in users can make real-time,
 ### Frontend
 - Livewire 4 + Flux UI pages. Call state lives in Alpine stores (`resources/js/calls.js`), and WebRTC is wrapped in `resources/js/webrtc.js`.
 - UI: user list with online status and Call buttons, incoming-call modal (Accept/Reject), calling/connecting/in-call bar with Cancel/Hang Up and a duration timer, notices (declined, missed, failed), and a hidden `<audio>` element for remote audio.
+- Tones (`resources/js/tones.js`) are synthesised with Web Audio: a ringtone (plus vibration on phones) for incoming calls and a ringback tone for the caller. While ringing, the tab title shows who is calling.
 - The call UI is `@persist`ed so a call survives `wire:navigate` page changes.
 - PWA: `public/manifest.json`, `public/sw.js` (offline page and asset caching; calls always need the network), and icons in `public/icons/`.
 
@@ -41,9 +42,12 @@ A working proof-of-concept web app where two signed-in users can make real-time,
 6. Other endings:
    - **Reject:** `rejected`.
    - **No answer within 30 seconds:** the caller cancels, recorded as `missed`.
-   - **Busy callee:** the new call is rejected automatically.
+   - **Busy:** the server refuses a new call (409) while either person is already ringing or in a call. A call to a busy person is logged as missed so it shows in their Recents. If two calls cross at the same instant, the callee's browser declines the second.
+   - **Too many calls:** one user may start at most 10 calls a minute (`throttle:call-starts`).
+   - **Reverb unreachable:** starting a call fails with 503 and is logged as missed; accept, reject and hang-up still save their status and report the error, and the other side catches up through heartbeats and presence. Browsers show a "Connection lost" banner and disable Call buttons while their WebSocket is down.
    - **The other user goes offline or closes the tab:** the call shows "Reconnecting" for up to 20 seconds, then ends if they don't come back.
 7. Resilience:
+   - **Races:** every status change is a conditional update (`Call::transitionFrom`), so when requests cross (the receiver answers as the caller cancels, two devices answer at once, both sides hang up together) exactly one wins and the other gets a 409 or a no-op. In the browser, a call cancelled while the microphone prompt or a request is still pending releases the microphone and cancels on the server.
    - **Page reload mid-call:** the tab remembers its call in `sessionStorage`, looks it up with `GET /calls/{id}`, rejoins `call.{id}` and whispers `rejoin`. The other side then sends a fresh offer.
    - **Network failure after connecting:** the caller whispers `rejoin` to renegotiate, and both sides get a 20-second grace period.
    - **Several devices signed in:** all of the receiver's devices ring. `call.accepted` and `call.rejected` also go to the receiver's other devices (`toOthers()`), so they stop ringing.

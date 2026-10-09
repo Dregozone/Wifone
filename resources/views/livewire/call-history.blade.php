@@ -70,7 +70,7 @@
                                     square
                                     class="rounded-full! text-accent-content!"
                                     :aria-label="__('Call :name back', ['name' => $contact->name])"
-                                    x-bind:disabled="! $store.presence.isOnline(userId) || $store.call.state !== 'idle'"
+                                    x-bind:disabled="! $store.presence.isOnline(userId) || $store.call.state !== 'idle' || ! $store.presence.connected"
                                     x-on:click="$store.call.start(userId, userName)"
                                 />
                             </li>

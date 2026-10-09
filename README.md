@@ -60,5 +60,11 @@ See [docs/Deployment.md](docs/Deployment.md) for Laravel Forge and TURN setup.
 ## Tests
 
 ```bash
-php artisan test --compact
+php artisan test --compact       # PHP: unit, feature and browser tests
+npm test                         # JavaScript: the call state machine (resources/js/calls.js)
 ```
+
+The browser tests (`tests/Browser`, Pest's browser plugin) drive a real Chromium: every page is
+checked for JavaScript errors and for accessibility problems with axe, in light and dark mode and
+at phone size, and the sign-in and incoming-call flows run end to end. Install the browser once
+with `npx playwright install chromium`. Run them alone with `vendor/bin/pest tests/Browser`.
