@@ -61,3 +61,33 @@ it('completes active calls whose heartbeat stopped, ending at the last heartbeat
         ->ended_at->equalTo($lastSeen)->toBeTrue()
         ->and($healthy->fresh()->status)->toBe(CallStatus::Active);
 });
+
+it('changes status only when the call still has the expected status', function () {
+    $call = Call::factory()->create();
+    Call::whereKey($call->id)->update(['status' => CallStatus::Missed]);
+
+    expect($call->transitionFrom(CallStatus::Ringing, ['status' => CallStatus::Active]))->toBeFalse()
+        ->and($call->status)->toBe(CallStatus::Missed)
+        ->and($call->fresh()->status)->toBe(CallStatus::Missed);
+});
+
+it('finishes a ringing call as missed and an active one as completed, once', function (Call $call, CallStatus $expected) {
+
+    expect($call->finish())->toBeTrue()
+        ->and($call->status)->toBe($expected)
+        ->and($call->ended_at)->not->toBeNull()
+        ->and($call->finish())->toBeFalse();
+})->with([
+    'ringing' => fn (): array => [Call::factory()->create(), CallStatus::Missed],
+    'active' => fn (): array => [Call::factory()->active()->create(), CallStatus::Completed],
+]);
+
+it('treats only ringing and active calls as busy', function () {
+    $ringing = Call::factory()->create();
+    $finished = Call::factory()->completed()->create();
+
+    expect(Call::isUserBusy($ringing->caller))->toBeTrue()
+        ->and(Call::isUserBusy($ringing->receiver))->toBeTrue()
+        ->and(Call::isUserBusy($finished->caller))->toBeFalse()
+        ->and(Call::isUserBusy(User::factory()->create()))->toBeFalse();
+});

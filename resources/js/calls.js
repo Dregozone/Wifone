@@ -1,3 +1,4 @@
+import { playTone, stopTone } from './tones.js';
 import { AudioPeer } from './webrtc.js';
 
 const RING_TIMEOUT_MS = 30_000;
@@ -21,6 +22,10 @@ const RECONNECTING = 'reconnecting';
 
 const IN_CALL_STATES = [CONNECTING, ACTIVE, RECONNECTING];
 
+function stopStream(stream) {
+    stream?.getTracks().forEach((track) => track.stop());
+}
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 }
@@ -38,8 +43,11 @@ async function request(method, url, body = undefined) {
     });
 
     if (!response.ok) {
-        const error = new Error(`${method} ${url} failed with ${response.status}`);
+        // The server explains refusals it expects (busy, call gone, too many calls) in `message`.
+        const { message } = await response.json().catch(() => ({}));
+        const error = new Error(message ?? `${method} ${url} failed with ${response.status}`);
         error.status = response.status;
+        error.serverMessage = message ?? null;
 
         throw error;
     }
@@ -49,19 +57,28 @@ async function request(method, url, body = undefined) {
 
 const post = (url, body = {}) => request('POST', url, body);
 
+/**
+ * A microphone problem, with a message meant for the user.
+ */
+class MicrophoneError extends Error {}
+
 async function getMicrophone() {
     if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Microphone access needs a secure (HTTPS) connection.');
+        throw new MicrophoneError('Microphone access needs a secure (HTTPS) connection.');
     }
 
     try {
         return await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (error) {
         if (error.name === 'NotAllowedError') {
-            throw new Error('Microphone access was denied. Allow it in your browser to make calls.');
+            throw new MicrophoneError('Microphone access was denied. Allow it in your browser to make calls.');
         }
 
-        throw new Error(`Could not access the microphone: ${error.message}`);
+        if (error.name === 'NotFoundError') {
+            throw new MicrophoneError('No microphone was found. Connect one to make calls.');
+        }
+
+        throw new MicrophoneError(`Could not access the microphone: ${error.message}`);
     }
 }
 
@@ -110,9 +127,13 @@ export function registerCallStores(Alpine, Echo, authUserId) {
     let heartbeatTimer = null;
     let durationTimer = null;
     let noticeTimer = null;
+    // Bumped on every new call and every hang-up, so a start() still awaiting can tell it was cancelled.
+    let callAttempt = 0;
 
     Alpine.store('presence', {
         onlineIds: [],
+        // Whether the WebSocket to Reverb is up. While it's down nobody can ring us or be rung.
+        connected: true,
 
         isOnline(userId) {
             return this.onlineIds.includes(userId);
@@ -154,11 +175,29 @@ export function registerCallStores(Alpine, Echo, authUserId) {
             }
 
             Object.assign(this, { state: OUTGOING, isCaller: true, peerId: userId, peerName: userName });
+            const attempt = ++callAttempt;
+            // The user can cancel while we wait for the mic or the server: then drop what arrives late.
+            const cancelled = () => attempt !== callAttempt || this.state !== OUTGOING;
 
             try {
                 // Ask for the mic first, while we still have the click's user gesture.
-                localStream = await getMicrophone();
+                const stream = await getMicrophone();
+
+                if (cancelled()) {
+                    stopStream(stream);
+
+                    return;
+                }
+
+                localStream = stream;
                 const { callId } = await post('/calls', { receiver_id: userId });
+
+                if (cancelled()) {
+                    post(`/calls/${callId}/end`).catch(console.error);
+
+                    return;
+                }
+
                 this.callId = callId;
                 rememberedCall.set(callId);
 
@@ -171,8 +210,12 @@ export function registerCallStores(Alpine, Echo, authUserId) {
                     }
                 }, RING_TIMEOUT_MS);
             } catch (error) {
+                if (cancelled()) {
+                    return;
+                }
+
                 console.error(error);
-                this.hangUp(error.message);
+                this.hangUp(error.serverMessage ?? (error instanceof MicrophoneError ? error.message : 'Could not start the call. Please try again.'));
             }
         },
 
@@ -186,25 +229,49 @@ export function registerCallStores(Alpine, Echo, authUserId) {
 
             this.state = CONNECTING;
             clearTimeout(ringTimer);
+            const { callId } = this;
+            // The caller can give up while we wait for the mic or the server.
+            const cancelled = () => this.callId !== callId || this.state !== CONNECTING;
+
+            let stream;
 
             try {
-                localStream = await getMicrophone();
+                stream = await getMicrophone();
             } catch (error) {
-                this.reject();
-                this.flash(error.message);
+                if (!cancelled()) {
+                    this.reject();
+                    this.flash(error.message);
+                }
 
                 return;
             }
 
+            if (cancelled()) {
+                stopStream(stream);
+
+                return;
+            }
+
+            localStream = stream;
+
             try {
-                await post(`/calls/${this.callId}/accept`);
-                rememberedCall.set(this.callId);
+                await post(`/calls/${callId}/accept`);
+
+                if (cancelled()) {
+                    return;
+                }
+
+                rememberedCall.set(callId);
                 startHeartbeat();
 
-                joinSignalChannel(this.callId).subscribed(() => sendOffer());
+                joinSignalChannel(callId).subscribed(() => sendOffer());
             } catch (error) {
+                if (cancelled()) {
+                    return;
+                }
+
                 console.error(error);
-                this.hangUp(error.status === 403 ? 'The call is no longer available.' : 'Could not connect the call.');
+                this.hangUp([403, 409].includes(error.status) ? 'The call is no longer available.' : 'Could not connect the call.');
             }
         },
 
@@ -212,6 +279,10 @@ export function registerCallStores(Alpine, Echo, authUserId) {
          * Receiver: decline the ringing call.
          */
         reject() {
+            if (this.state !== INCOMING && this.state !== CONNECTING) {
+                return;
+            }
+
             if (this.callId) {
                 post(`/calls/${this.callId}/reject`).catch(console.error);
             }
@@ -223,6 +294,9 @@ export function registerCallStores(Alpine, Echo, authUserId) {
          * Either side: hang up, or cancel while still ringing.
          */
         hangUp(message = '') {
+            // Also cancels a call still waiting for the mic or the server (see start()).
+            callAttempt++;
+
             if (this.callId) {
                 post(`/calls/${this.callId}/end`).catch(console.error);
             }
@@ -309,14 +383,19 @@ export function registerCallStores(Alpine, Echo, authUserId) {
     function joinSignalChannel(callId) {
         signalChannel = Echo.private(`call.${callId}`)
             .listenForWhisper('offer', async (offer) => {
+                // The offer can beat call.accepted to the caller (outgoing), but never arrives usefully once we've hung up.
+                if (!localStream || ![OUTGOING, ...IN_CALL_STATES].includes(call.state)) {
+                    return;
+                }
+
                 if (!peer) {
                     createPeer();
                 }
 
-                await peer.handleOffer(offer);
+                await peer.handleOffer(offer).catch(logSignallingError);
             })
-            .listenForWhisper('answer', (answer) => peer?.handleAnswer(answer))
-            .listenForWhisper('ice', (candidate) => peer?.addIceCandidate(candidate))
+            .listenForWhisper('answer', (answer) => peer?.handleAnswer(answer).catch(logSignallingError))
+            .listenForWhisper('ice', (candidate) => peer?.addIceCandidate(candidate).catch(logSignallingError))
             .listenForWhisper('rejoin', () => {
                 // The other side reloaded or lost its connection: rebuild the connection with a fresh offer.
                 if (IN_CALL_STATES.includes(call.state)) {
@@ -331,6 +410,14 @@ export function registerCallStores(Alpine, Echo, authUserId) {
             });
 
         return signalChannel;
+    }
+
+    /**
+     * A stale or out-of-order message (e.g. ICE for a connection we just replaced) is harmless:
+     * the connection state handlers decide whether the call recovers.
+     */
+    function logSignallingError(error) {
+        console.warn('Ignoring signalling message:', error);
     }
 
     /**
@@ -439,8 +526,8 @@ export function registerCallStores(Alpine, Echo, authUserId) {
             try {
                 await post(`/calls/${call.callId}/heartbeat`);
             } catch (error) {
-                // 403: the server considers the call over (e.g. the other side hung up while we were offline).
-                if (error.status === 403) {
+                // The server considers the call over (e.g. the other side hung up while we were offline).
+                if (error.status === 403 || error.status === 404) {
                     cleanUp();
                     call.flash('Call ended.');
                 }
@@ -526,7 +613,7 @@ export function registerCallStores(Alpine, Echo, authUserId) {
         peer?.close();
         peer = null;
 
-        localStream?.getTracks().forEach((track) => track.stop());
+        stopStream(localStream);
         localStream = null;
 
         if (call.callId) {
@@ -557,6 +644,35 @@ export function registerCallStores(Alpine, Echo, authUserId) {
         .listen('.call.accepted', (event) => call.onAccepted(event))
         .listen('.call.rejected', (event) => call.onRejected(event))
         .listen('.call.ended', (event) => call.onEnded(event));
+
+    // Ring, and show who is calling in the tab title, so a call is noticed from another tab.
+    let titleBeforeRinging = null;
+    Alpine.effect(() => {
+        if (call.state === INCOMING) {
+            playTone('ringtone');
+            titleBeforeRinging ??= document.title;
+            document.title = `📞 ${call.peerName} is calling…`;
+
+            return;
+        }
+
+        if (titleBeforeRinging !== null) {
+            document.title = titleBeforeRinging;
+            titleBeforeRinging = null;
+        }
+
+        if (call.state === OUTGOING) {
+            playTone('ringback');
+        } else {
+            stopTone();
+        }
+    });
+
+    // Pusher's states: initialized → connecting → connected, and unavailable / failed /
+    // disconnected when the socket is down (it keeps retrying by itself).
+    Echo.connector.pusher?.connection.bind('state_change', ({ current }) => {
+        presence.connected = !['unavailable', 'failed', 'disconnected'].includes(current);
+    });
 
     Echo.join('online')
         .here((users) => (presence.onlineIds = users.map((user) => user.id)))

@@ -8,6 +8,10 @@ use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
 use App\Models\Call;
+use App\Models\User;
+use GuzzleHttp\Exception\GuzzleException;
+use Illuminate\Broadcasting\BroadcastException;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -15,6 +19,9 @@ use Illuminate\Support\Facades\Gate;
 /**
  * Call lifecycle only. The WebRTC offer/answer/ICE exchange happens
  * browser-to-browser via Echo whispers on the private `call.{id}` channel.
+ *
+ * Every status change is a conditional update (Call::transitionFrom), so when two
+ * requests race for the same call exactly one wins and the other gets a 409.
  */
 class CallController extends Controller
 {
@@ -53,6 +60,10 @@ class CallController extends Controller
         return response()->json(['status' => $call->status->value]);
     }
 
+    /**
+     * Ring another user. Refused while either side is already in a call; a call to a busy
+     * receiver is still logged as missed so it shows in their Recents.
+     */
     public function store(Request $request): JsonResponse
     {
         Call::expireStale();
@@ -61,13 +72,35 @@ class CallController extends Controller
             'receiver_id' => ['required', 'integer', 'exists:users,id', 'not_in:'.$request->user()->id],
         ]);
 
+        if (Call::isUserBusy($request->user())) {
+            return response()->json(['message' => __('You are already in a call.')], 409);
+        }
+
+        $receiver = User::findOrFail($validated['receiver_id']);
+
+        if (Call::isUserBusy($receiver)) {
+            Call::create([
+                'caller_id' => $request->user()->id,
+                'receiver_id' => $receiver->id,
+                'status' => CallStatus::Missed,
+                'ended_at' => now(),
+            ]);
+
+            return response()->json(['message' => __(':name is on another call.', ['name' => $receiver->name])], 409);
+        }
+
         $call = Call::create([
             'caller_id' => $request->user()->id,
-            'receiver_id' => $validated['receiver_id'],
+            'receiver_id' => $receiver->id,
             'status' => CallStatus::Ringing,
         ]);
 
-        broadcast(new CallInitiated($call));
+        if (! $this->broadcastSafely(new CallInitiated($call))) {
+            // Nobody can be rung, so don't leave the call ringing until it expires.
+            $call->transitionFrom(CallStatus::Ringing, ['status' => CallStatus::Missed, 'ended_at' => now()]);
+
+            return response()->json(['message' => __('Calling is unavailable right now. Please try again in a moment.')], 503);
+        }
 
         return response()->json(['callId' => $call->id], 201);
     }
@@ -76,14 +109,18 @@ class CallController extends Controller
     {
         Gate::authorize('accept', $call);
 
-        $call->update([
+        $accepted = $call->transitionFrom(CallStatus::Ringing, [
             'status' => CallStatus::Active,
             'started_at' => now(),
             'last_heartbeat_at' => now(),
         ]);
 
+        if (! $accepted) {
+            return $this->noLongerAvailable();
+        }
+
         // toOthers(): the receiver's other devices also get this, so they stop ringing.
-        broadcast(new CallAccepted($call))->toOthers();
+        $this->broadcastSafely(new CallAccepted($call), toOthers: true);
 
         return response()->json(['status' => 'ok']);
     }
@@ -92,12 +129,16 @@ class CallController extends Controller
     {
         Gate::authorize('reject', $call);
 
-        $call->update([
+        $rejected = $call->transitionFrom(CallStatus::Ringing, [
             'status' => CallStatus::Rejected,
             'ended_at' => now(),
         ]);
 
-        broadcast(new CallRejected($call))->toOthers();
+        if (! $rejected) {
+            return $this->noLongerAvailable();
+        }
+
+        $this->broadcastSafely(new CallRejected($call), toOthers: true);
 
         return response()->json(['status' => 'ok']);
     }
@@ -110,15 +151,42 @@ class CallController extends Controller
     {
         Gate::authorize('end', $call);
 
-        if ($call->status->isLive()) {
-            $call->update([
-                'status' => $call->status === CallStatus::Active ? CallStatus::Completed : CallStatus::Missed,
-                'ended_at' => now(),
-            ]);
-
-            broadcast(new CallEnded($call, $call->otherParticipantId($request->user())));
+        if ($call->finish()) {
+            $this->broadcastSafely(new CallEnded($call, $call->otherParticipantId($request->user())));
         }
 
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Broadcast an event, reporting rather than throwing if Reverb can't be reached (a refused
+     * connection surfaces as a Guzzle exception, an error reply as a BroadcastException).
+     *
+     * The call's new status is already saved, and the other side catches up through its
+     * heartbeat and presence, so a failed broadcast must not turn the request into an error.
+     */
+    private function broadcastSafely(ShouldBroadcast $event, bool $toOthers = false): bool
+    {
+        try {
+            $pending = broadcast($event);
+
+            if ($toOthers) {
+                $pending->toOthers();
+            }
+
+            // The event is sent when the pending broadcast is destroyed, so do that inside the try.
+            unset($pending);
+        } catch (BroadcastException|GuzzleException $exception) {
+            report($exception);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function noLongerAvailable(): JsonResponse
+    {
+        return response()->json(['message' => __('The call is no longer available.')], 409);
     }
 }

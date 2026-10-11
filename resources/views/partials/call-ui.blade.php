@@ -12,6 +12,7 @@
         x-show="$store.call.state === 'incoming'"
         x-cloak
         x-transition.opacity.duration.200ms
+        x-trap.inert.noscroll="$store.call.state === 'incoming'"
         x-effect="if ($store.call.state === 'incoming') $nextTick(() => $refs.acceptButton.focus())"
         role="dialog"
         aria-modal="true"
@@ -108,6 +109,21 @@
         <div class="bg-ink flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-white shadow-xl ring-1 ring-white/10">
             <flux:icon.information-circle variant="mini" class="size-5 shrink-0 text-teal-300" />
             <span x-text="$store.call.notice"></span>
+        </div>
+    </div>
+
+    {{-- Lost the WebSocket to Reverb: calls can't ring either way until it's back --}}
+    <div
+        id="connection-lost"
+        x-show="! $store.presence.connected"
+        x-cloak
+        x-transition.opacity
+        role="alert"
+        class="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 lg:left-[calc(50%+8rem)]"
+    >
+        <div class="flex items-center gap-3 rounded-2xl bg-amber-100 px-4 py-3 text-sm text-amber-950 shadow-xl ring-1 ring-amber-300 dark:bg-amber-950 dark:text-amber-100 dark:ring-amber-800">
+            <flux:icon.signal-slash variant="mini" class="size-5 shrink-0" />
+            <span>{{ __('Connection lost. Calls can’t ring until you’re back online. Reconnecting…') }}</span>
         </div>
     </div>
 
