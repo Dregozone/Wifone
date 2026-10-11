@@ -25,3 +25,17 @@ test('new users can register', function () {
 
     $this->assertAuthenticated();
 });
+
+test('registration screen explains the production password rules', function () {
+    app()->detectEnvironment(fn (): string => 'production');
+
+    $this->get(route('register'))
+        ->assertOk()
+        ->assertSee('At least 12 characters, with upper and lower case letters, a number and a symbol.');
+});
+
+test('registration screen omits the production password rules elsewhere', function () {
+    $this->get(route('register'))
+        ->assertOk()
+        ->assertDontSee('At least 12 characters');
+});

@@ -38,6 +38,7 @@
                 required
                 autocomplete="new-password"
                 :placeholder="__('Password')"
+                :description:trailing="app()->isProduction() ? __('At least 12 characters, with upper and lower case letters, a number and a symbol. Passwords found in known data breaches are not allowed.') : null"
                 viewable
             />
 

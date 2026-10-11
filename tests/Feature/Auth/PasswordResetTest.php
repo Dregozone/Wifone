@@ -63,3 +63,19 @@ test('password can be reset with valid token', function () {
         return true;
     });
 });
+
+test('reset password link screen asks users to message Anders when no mailer is set up', function () {
+    config(['mail.default' => 'log']);
+
+    $this->get(route('password.request'))
+        ->assertOk()
+        ->assertSee('Message Anders')
+        ->assertDontSee('Email password reset link');
+});
+
+test('reset password link screen offers the email form when a mailer is set up', function () {
+    $this->get(route('password.request'))
+        ->assertOk()
+        ->assertSee('Email password reset link')
+        ->assertDontSee('Message Anders');
+});
