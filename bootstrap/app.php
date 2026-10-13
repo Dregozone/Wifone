@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CaptureSignUpSource;
 use App\Http\Middleware\EmbeddedSession;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -14,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Before the session starts: a framed request gets its own session cookie.
-        $middleware->web(prepend: [EmbeddedSession::class]);
+        $middleware->web(prepend: [EmbeddedSession::class], append: [CaptureSignUpSource::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

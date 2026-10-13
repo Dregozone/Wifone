@@ -20,4 +20,16 @@ return [
         'origins' => array_values(array_filter(explode(' ', (string) env('WIFONE_EMBED_ORIGINS', '')))),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Sign-up emails
+    |--------------------------------------------------------------------------
+    |
+    | Where to email news of each sign-up (see NotifyAdminOfSignUp). Unset,
+    | no sign-up emails are sent.
+    |
+    */
+
+    'admin_notify_email' => env('ADMIN_NOTIFY_EMAIL'),
+
 ];
