@@ -82,7 +82,15 @@ VITE_REVERB_SCHEME="${REVERB_SCHEME}"
 TURN_URL="..."
 TURN_USERNAME=...
 TURN_CREDENTIAL=...
+
+MAIL_MAILER=resend
+RESEND_API_KEY=re_...
+MAIL_FROM_ADDRESS="wifone@your-verified-domain.com"
+# Emailed about each sign-up; leave empty to turn that off
+ADMIN_NOTIFY_EMAIL=you@example.com
 ```
+
+> `MAIL_FROM_ADDRESS` must be on a domain verified in Resend, or Resend refuses the mail. Once `MAIL_MAILER` is no longer `log`, the forgot-password page offers reset emails again.
 
 > **`REVERB_APP_KEY` must be plain letters and numbers.** If Forge pre-fills it with a `base64:...` value, replace it. Reverb splits the channel signature on the first `:`, so a key containing a colon makes every private and presence channel fail. The socket still connects, but everyone shows as Offline and calls never ring. Copy the key from your local `.env`, or use any random 20-character lowercase string.
 
