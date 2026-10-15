@@ -12,7 +12,7 @@ use Laravel\Fortify\Features;
 beforeEach(function () {
     $this->skipUnlessFortifyFeature(Features::registration());
 
-    config(['wifone.admin_notify_email' => 'admin@example.com']);
+    config(['wifone.admin_notify_email' => 'admin@example.com', 'wifone.access_code' => 'open-sesame']);
 });
 
 function signUp(string $email = 'test@example.com', array $headers = []): TestResponse
@@ -20,6 +20,7 @@ function signUp(string $email = 'test@example.com', array $headers = []): TestRe
     return test()->withHeaders($headers)->post(route('register.store'), [
         'name' => 'John Doe',
         'email' => $email,
+        'access_code' => 'open-sesame',
         'password' => 'password',
         'password_confirmation' => 'password',
     ]);
