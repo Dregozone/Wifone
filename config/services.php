@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'stats' => [
+        'token' => env('STATS_TOKEN'),
+    ],
+
     /*
      * TURN relay for WebRTC calls behind strict NATs. TURN_URL accepts a
      * comma-separated list, e.g. "turn:host:80,turns:host:443?transport=tcp".
