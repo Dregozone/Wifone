@@ -32,4 +32,16 @@ return [
 
     'admin_notify_email' => env('ADMIN_NOTIFY_EMAIL'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Access code
+    |--------------------------------------------------------------------------
+    |
+    | The code people must enter to sign up, checked ignoring case and
+    | surrounding spaces (see CreateNewUser). Unset, sign-up is closed.
+    |
+    */
+
+    'access_code' => env('WIFONE_ACCESS_CODE'),
+
 ];

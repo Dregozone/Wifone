@@ -12,6 +12,8 @@ use App\Models\User;
 beforeEach(function (): void {
     // Reverb isn't running under test; nothing here depends on events arriving.
     config(['broadcasting.default' => 'null']);
+    // Open sign-up, so the register page shows its form.
+    config(['wifone.access_code' => 'smoke-test']);
 });
 
 dataset('appearances', [

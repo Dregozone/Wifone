@@ -88,6 +88,8 @@ RESEND_API_KEY=re_...
 MAIL_FROM_ADDRESS="wifone@your-verified-domain.com"
 # Emailed about each sign-up; leave empty to turn that off
 ADMIN_NOTIFY_EMAIL=you@example.com
+# The code people need to sign up; share it with those you invite. Empty closes sign-up
+WIFONE_ACCESS_CODE=...
 ```
 
 > `MAIL_FROM_ADDRESS` must be on a domain verified in Resend, or Resend refuses the mail. Once `MAIL_MAILER` is no longer `log`, the forgot-password page offers reset emails again.
@@ -200,7 +202,7 @@ Lighthouse flags these files as having no cache lifetime without it.
 
 ### 2.7 Smoke test
 
-1. Deploy, then open `https://wifone.example.com` and register two users.
+1. Deploy, then open `https://wifone.example.com` and register two users, using your `WIFONE_ACCESS_CODE`.
 2. Sign in on a laptop, and on a phone using **mobile data** (not your Wi-Fi) so the call has to cross the internet.
 3. Check both show as online, call, accept, talk both ways, and hang up.
 4. Check **Call history** on both devices.
