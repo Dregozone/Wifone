@@ -38,5 +38,6 @@
     <script>
         window.authUserId = {{ auth()->id() }};
         window.iceServers = @js($iceServers);
+        window.pendingInviteCount = {{ \App\Models\CallSchedule::pendingInviteCountFor(auth()->user()) }};
     </script>
 @endauth

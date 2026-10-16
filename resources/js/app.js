@@ -2,6 +2,7 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 import { registerCallStores } from './calls.js';
 import { bridgeToEmbedder } from './embedBridge.js';
+import { formatLocalTime, registerInviteStore } from './invites.js';
 
 window.Pusher = Pusher;
 
@@ -28,8 +29,12 @@ if ('serviceWorker' in navigator) {
 
 // Alpine is started by Livewire on DOMContentLoaded, after this module has run.
 document.addEventListener('alpine:init', () => {
+    // Scheduled call times are sent in UTC and shown in the viewer's own time zone.
+    window.Alpine.magic('localTime', () => formatLocalTime);
+
     if (window.authUserId) {
         registerCallStores(window.Alpine, window.Echo, window.authUserId);
+        registerInviteStore(window.Alpine, window.Echo, window.authUserId, window.pendingInviteCount);
         bridgeToEmbedder(window.Alpine);
     }
 });

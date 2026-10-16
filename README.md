@@ -9,6 +9,7 @@ A web-based, audio-only voice calling proof-of-concept built with Laravel, Rever
 - **Media negotiation** (peer to peer): the WebRTC offer, answer and ICE candidates travel as Echo *whispers* on a private `call.{id}` channel that only the two participants of a live call may join (see `CallPolicy::signal`).
 - **Audio** flows directly between the browsers, using STUN, or a TURN relay when a direct path isn't possible.
 - **Call history** (`/calls`) lists only calls the signed-in user made or received.
+- **Scheduled calls**: **Schedule a call** on a contact's card sends an invite (one-off, weekly, fortnightly or on several weekdays), stored in `call_schedules` in UTC with the inviter's time zone. The invitee accepts or declines it on **Invites** (`/invites`), where either person can skip one occurrence or cancel the series. From 5 minutes before to 30 minutes after an agreed slot, **Start scheduled call** rings the other person through the normal call flow (`POST /calls` with `call_schedule_id`, checked by `CallSchedulePolicy::start`). The navigation badge counts pending invites and updates live over the private `user.{id}` channel.
 
 Key files: `app/Http/Controllers/CallController.php`, `app/Policies/CallPolicy.php`, `routes/channels.php`, `resources/js/calls.js` (call state machine), `resources/js/webrtc.js` (peer connection), `resources/views/partials/call-ui.blade.php`.
 

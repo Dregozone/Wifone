@@ -4,6 +4,7 @@ use App\Events\CallAccepted;
 use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
+use App\Events\InvitesUpdated;
 use App\Models\Call;
 
 it('sends CallInitiated to the receiver with the caller details', function () {
@@ -41,4 +42,12 @@ it('sends CallEnded to the given recipient with the final status', function () {
     expect($event->broadcastOn()[0]->name)->toBe("private-calls.{$call->caller_id}")
         ->and($event->broadcastAs())->toBe('call.ended')
         ->and($event->broadcastWith())->toBe(['callId' => $call->id, 'status' => 'completed']);
+});
+
+it('sends InvitesUpdated to the user with their pending invite count', function () {
+    $event = new InvitesUpdated(5, 3);
+
+    expect($event->broadcastOn()[0]->name)->toBe('private-user.5')
+        ->and($event->broadcastAs())->toBe('invites.updated')
+        ->and($event->broadcastWith())->toBe(['pendingCount' => 3]);
 });

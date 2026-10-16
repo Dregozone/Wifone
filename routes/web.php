@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CallController;
 use App\Livewire\CallHistory;
+use App\Livewire\Invites;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
@@ -9,6 +10,7 @@ Route::view('/', 'welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');
     Route::livewire('calls', CallHistory::class)->name('calls.index');
+    Route::livewire('invites', Invites::class)->name('invites.index');
 
     Route::post('calls', [CallController::class, 'store'])->middleware('throttle:call-starts')->name('calls.store');
     Route::get('calls/{call}', [CallController::class, 'show'])->name('calls.show');

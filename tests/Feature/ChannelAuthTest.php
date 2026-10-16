@@ -88,3 +88,22 @@ test('participants cannot join the signalling channel of a finished call', funct
         ])
         ->assertForbidden();
 });
+
+test('authenticated user can authorise only their own user channel', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+
+    $this->actingAs($user)
+        ->postJson('/broadcasting/auth', [
+            'socket_id' => '1234.5678',
+            'channel_name' => "private-user.{$user->id}",
+        ])
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->postJson('/broadcasting/auth', [
+            'socket_id' => '1234.5678',
+            'channel_name' => "private-user.{$otherUser->id}",
+        ])
+        ->assertForbidden();
+});
