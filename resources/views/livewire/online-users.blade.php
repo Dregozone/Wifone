@@ -64,6 +64,15 @@
                                     </div>
                                 </div>
 
+                                <flux:button
+                                    variant="subtle"
+                                    icon="calendar-days"
+                                    square
+                                    class="rounded-full! text-accent-content!"
+                                    :aria-label="__('Schedule a call with :name', ['name' => $user->name])"
+                                    x-on:click="$wire.dispatch('schedule-call', { userId })"
+                                />
+
                                 @if ($showsOnlineUsers)
                                     <flux:button
                                         variant="primary"

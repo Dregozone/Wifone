@@ -167,9 +167,10 @@ export function registerCallStores(Alpine, Echo, authUserId) {
         },
 
         /**
-         * Caller: ring another user.
+         * Caller: ring another user, either ad hoc or for an agreed call schedule (whose
+         * window the server checks).
          */
-        async start(userId, userName) {
+        async start(userId, userName, scheduleId = null) {
             if (this.state !== IDLE) {
                 return;
             }
@@ -190,7 +191,7 @@ export function registerCallStores(Alpine, Echo, authUserId) {
                 }
 
                 localStream = stream;
-                const { callId } = await post('/calls', { receiver_id: userId });
+                const { callId } = await post('/calls', scheduleId ? { receiver_id: userId, call_schedule_id: scheduleId } : { receiver_id: userId });
 
                 if (cancelled()) {
                     post(`/calls/${callId}/end`).catch(console.error);

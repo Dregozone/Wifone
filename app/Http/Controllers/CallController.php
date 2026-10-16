@@ -8,6 +8,7 @@ use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
 use App\Models\Call;
+use App\Models\CallSchedule;
 use App\Models\User;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Broadcasting\BroadcastException;
@@ -15,6 +16,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Call lifecycle only. The WebRTC offer/answer/ICE exchange happens
@@ -63,6 +65,9 @@ class CallController extends Controller
     /**
      * Ring another user. Refused while either side is already in a call; a call to a busy
      * receiver is still logged as missed so it shows in their Recents.
+     *
+     * With a `call_schedule_id` this is the "Start scheduled call" button: only the two
+     * participants may use it, and only while an agreed occurrence's window is open.
      */
     public function store(Request $request): JsonResponse
     {
@@ -70,7 +75,18 @@ class CallController extends Controller
 
         $validated = $request->validate([
             'receiver_id' => ['required', 'integer', 'exists:users,id', 'not_in:'.$request->user()->id],
+            'call_schedule_id' => ['nullable', 'integer', 'exists:call_schedules,id'],
         ]);
+
+        if (isset($validated['call_schedule_id'])) {
+            $schedule = CallSchedule::with('skips')->findOrFail($validated['call_schedule_id']);
+
+            Gate::authorize('start', $schedule);
+
+            if ($schedule->otherParticipantId($request->user()) !== (int) $validated['receiver_id']) {
+                throw ValidationException::withMessages(['receiver_id' => __('This scheduled call is with someone else.')]);
+            }
+        }
 
         if (Call::isUserBusy($request->user())) {
             return response()->json(['message' => __('You are already in a call.')], 409);

@@ -101,6 +101,16 @@ describe('making a call', () => {
         expect(playTone).toHaveBeenLastCalledWith('ringback');
     });
 
+    it('starts a scheduled call through the normal call flow', async () => {
+        server.respond('POST /calls', 201, { callId: 7 });
+
+        call.start(SAM.id, SAM.name, 12);
+        await flush();
+
+        expect(server.requests[0]).toEqual({ key: 'POST /calls', body: { receiver_id: SAM.id, call_schedule_id: 12 } });
+        expect(call.state).toBe('outgoing');
+    });
+
     it('does nothing when already in a call', async () => {
         await connectedOutgoingCall();
         const requestsBefore = server.requests.length;

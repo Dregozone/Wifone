@@ -20,6 +20,18 @@
                 <flux:sidebar.item icon="clock" :href="route('calls.index')" :current="request()->routeIs('calls.index')" wire:navigate>
                     {{ __('Recents') }}
                 </flux:sidebar.item>
+                <flux:sidebar.item
+                    icon="calendar-days"
+                    :href="route('invites.index')"
+                    :current="request()->routeIs('invites.index')"
+                    badge:x-show="$store.invites.pendingCount > 0"
+                    badge:x-cloak
+                    badge:aria-label="{{ __('pending invites') }}"
+                    wire:navigate
+                >
+                    {{ __('Invites') }}
+                    <x-slot:badge><span x-text="$store.invites.pendingCount"></span></x-slot:badge>
+                </flux:sidebar.item>
                 <flux:sidebar.item icon="cog-6-tooth" :href="route('profile.edit')" :current="request()->routeIs('profile.edit', 'security.edit', 'appearance.edit')" wire:navigate>
                     {{ __('Settings') }}
                 </flux:sidebar.item>
@@ -97,11 +109,12 @@
         {{-- Mobile tab bar --}}
         <nav
             aria-label="{{ __('Main') }}"
-            class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden dark:border-zinc-800 dark:bg-zinc-900/95"
+            class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden dark:border-zinc-800 dark:bg-zinc-900/95"
         >
             @foreach ([
                 ['route' => 'dashboard', 'active' => 'dashboard', 'icon' => 'users', 'label' => __('Contacts')],
                 ['route' => 'calls.index', 'active' => 'calls.index', 'icon' => 'clock', 'label' => __('Recents')],
+                ['route' => 'invites.index', 'active' => 'invites.index', 'icon' => 'calendar-days', 'label' => __('Invites')],
                 ['route' => 'profile.edit', 'active' => ['profile.edit', 'security.edit', 'appearance.edit'], 'icon' => 'cog-6-tooth', 'label' => __('Settings')],
             ] as $tab)
                 @php($isCurrentTab = request()->routeIs($tab['active']))
@@ -115,8 +128,21 @@
                         'text-zinc-500 dark:text-zinc-400' => ! $isCurrentTab,
                     ])
                 >
-                    <flux:icon :name="$tab['icon']" :variant="$isCurrentTab ? 'solid' : 'outline'" class="size-6" />
+                    <span class="relative">
+                        <flux:icon :name="$tab['icon']" :variant="$isCurrentTab ? 'solid' : 'outline'" class="size-6" />
+                        @if ($tab['route'] === 'invites.index')
+                            <span
+                                x-show="$store.invites.pendingCount > 0"
+                                x-cloak
+                                x-text="$store.invites.pendingCount"
+                                class="bg-hangup absolute -top-1 -right-2 min-w-4 rounded-full px-1 text-center text-[10px] leading-4 font-semibold text-white tabular-nums"
+                            ></span>
+                        @endif
+                    </span>
                     {{ $tab['label'] }}
+                    @if ($tab['route'] === 'invites.index')
+                        <span class="sr-only" x-show="$store.invites.pendingCount > 0" x-text="`(${$store.invites.pendingCount} {{ __('pending') }})`"></span>
+                    @endif
                 </a>
             @endforeach
         </nav>

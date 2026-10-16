@@ -6,6 +6,7 @@ use App\Events\CallEnded;
 use App\Events\CallInitiated;
 use App\Events\CallRejected;
 use App\Models\Call;
+use App\Models\CallSchedule;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use Illuminate\Support\Facades\Event;
@@ -341,4 +342,61 @@ it('does not end a call twice when both sides hang up at once', function (): voi
     expect($call->fresh()->ended_at->equalTo($endedByPeerAt))->toBeTrue();
 
     Event::assertNotDispatched(CallEnded::class);
+});
+
+it('starts a scheduled call during an agreed occurrence\'s window', function (string $participant): void {
+    $schedule = CallSchedule::factory()->accepted()->create(['starts_at' => now()->addMinutes(3)]);
+    $starter = $schedule->{$participant};
+    $other = $participant === 'caller' ? $schedule->callee : $schedule->caller;
+
+    $response = $this->actingAs($starter)
+        ->postJson(route('calls.store'), ['receiver_id' => $other->id, 'call_schedule_id' => $schedule->id])
+        ->assertCreated();
+
+    expect(Call::findOrFail($response->json('callId')))
+        ->caller_id->toBe($starter->id)
+        ->receiver_id->toBe($other->id)
+        ->status->toBe(CallStatus::Ringing);
+})->with(['caller', 'callee']);
+
+it('refuses a scheduled call outside the window', function (string $startsIn): void {
+    $schedule = CallSchedule::factory()->accepted()->create(['starts_at' => now()->modify($startsIn)]);
+
+    $this->actingAs($schedule->caller)
+        ->postJson(route('calls.store'), ['receiver_id' => $schedule->callee_id, 'call_schedule_id' => $schedule->id])
+        ->assertForbidden();
+
+    expect(Call::count())->toBe(0);
+})->with([
+    'too early' => ['+10 minutes'],
+    'too late' => ['-31 minutes'],
+]);
+
+it('refuses a scheduled call that has not been accepted', function (): void {
+    $schedule = CallSchedule::factory()->create(['starts_at' => now()]);
+
+    $this->actingAs($schedule->caller)
+        ->postJson(route('calls.store'), ['receiver_id' => $schedule->callee_id, 'call_schedule_id' => $schedule->id])
+        ->assertForbidden();
+});
+
+it('refuses a scheduled call from someone outside the schedule', function (): void {
+    $schedule = CallSchedule::factory()->accepted()->create(['starts_at' => now()]);
+
+    $this->actingAs(User::factory()->create())
+        ->postJson(route('calls.store'), ['receiver_id' => $schedule->callee_id, 'call_schedule_id' => $schedule->id])
+        ->assertForbidden();
+
+    expect(Call::count())->toBe(0);
+});
+
+it('refuses a scheduled call to someone other than the other participant', function (): void {
+    $schedule = CallSchedule::factory()->accepted()->create(['starts_at' => now()]);
+
+    $this->actingAs($schedule->caller)
+        ->postJson(route('calls.store'), ['receiver_id' => User::factory()->create()->id, 'call_schedule_id' => $schedule->id])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('receiver_id');
+
+    expect(Call::count())->toBe(0);
 });

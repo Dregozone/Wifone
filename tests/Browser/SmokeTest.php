@@ -2,6 +2,7 @@
 
 use App\CallStatus;
 use App\Models\Call;
+use App\Models\CallSchedule;
 use App\Models\User;
 
 /*
@@ -38,6 +39,10 @@ it('renders the signed-in pages cleanly', function (string $routeName, string $a
     // Recents shows a completed outgoing call and a missed incoming one (in red).
     Call::factory()->completed()->for($me, 'caller')->for($sam, 'receiver')->create();
     Call::factory()->for($sam, 'caller')->for($me, 'receiver')->create(['status' => CallStatus::Missed, 'ended_at' => now()]);
+    // Invites shows one to answer (so the badge shows), an upcoming weekly call and one sent.
+    CallSchedule::factory()->for($sam, 'caller')->for($me, 'callee')->create();
+    CallSchedule::factory()->accepted()->weekly()->for($me, 'caller')->for($sam, 'callee')->create();
+    CallSchedule::factory()->for($me, 'caller')->for(User::factory()->create(['name' => 'Alex Moore']), 'callee')->create();
     $this->actingAs($me);
 
     $page = visit(route($routeName))->{$appearance}()->assertNoJavaScriptErrors();
@@ -46,6 +51,7 @@ it('renders the signed-in pages cleanly', function (string $routeName, string $a
 })->with([
     'contacts' => 'dashboard',
     'recents' => 'calls.index',
+    'invites' => 'invites.index',
     'profile' => 'profile.edit',
     'appearance' => 'appearance.edit',
 ])->with('appearances');
@@ -59,4 +65,4 @@ it('fits a phone screen without sideways scrolling', function (string $routeName
         ->assertVisible('nav[aria-label="Main"]')
         ->assertScript('document.documentElement.scrollWidth <= window.innerWidth', true)
         ->assertNoJavaScriptErrors();
-})->with(['dashboard', 'calls.index', 'profile.edit']);
+})->with(['dashboard', 'calls.index', 'invites.index', 'profile.edit']);

@@ -12,6 +12,10 @@ Broadcast::channel('calls.{userId}', function (User $user, int $userId) {
     return $user->id === $userId;
 });
 
+Broadcast::channel('user.{userId}', function (User $user, int $userId) {
+    return $user->id === $userId;
+});
+
 Broadcast::channel('call.{call}', function (User $user, Call $call) {
     return $user->can('signal', $call);
 });
